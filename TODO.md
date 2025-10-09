@@ -1,5 +1,6 @@
 # TODO
 
+- [ ] documentation for all functions
 - [x] remove C standard library requirement
     - [x] printf
     - [x] vsnprintf

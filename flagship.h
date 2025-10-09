@@ -11,9 +11,6 @@
 #include <stdbool.h>
 #include <stdarg.h>
 #include <inttypes.h>
-// #include <stdio.h>
-// #include <stdlib.h>
-// #include <string.h>
 
 #undef FSHIP_INL
 #if __cplusplus
@@ -201,10 +198,54 @@ void* __fls_alloc( void* ptr, size_t old_size, size_t new_size ) {
 #define FSHIP_COLOR_CYAN    "\033[1;36m"
 #define FSHIP_COLOR_RESET   "\033[1;00m"
 
+/// @brief Flag types.
 typedef enum {
+    /// @brief Boolean flag.
+    /// @details
+    /// To set flag:    -flag
+    ///
+    /// To ignore flag: +flag
+    ///
+    /// Boolean flags must always be named.
     FSHIP_BOOL,
+    /// @brief Integer flag.
+    /// @details
+    /// To set flag:    -flag:\%d or -flag \%d
+    ///
+    /// To ignore flag: +flag:\%d or +flag \%d
+    ///
+    /// Where \%d is any positive/negative whole number.
+    ///
+    /// Integer flags can be unnamed, provided that there are no
+    /// other integer or float unnamed flags in a given context.
+    ///
+    /// Unnamed integer flags can only be positive without a leading +.
     FSHIP_INT,
+    /// @brief Float flag.
+    /// @details
+    /// To set flag:    -flag:\%f or -flag \%f
+    ///
+    /// To ignore flag: +flag:\%f or +flag \%f
+    ///
+    /// Where \%f is any positive/negative number.
+    ///
+    /// Float flags can be unnamed, provided that there are no
+    /// other integer or float unnamed flags in a given context.
+    ///
+    /// Unnamed float flags can only be positive without a leading +.
     FSHIP_FLT,
+    /// @brief String flag.
+    /// @details
+    /// To set flag:    -flag:\%s or -flag \%s
+    ///
+    /// To ignore flag: +flag:\%s or +flag \%s
+    ///
+    /// Where \%s is any string.
+    ///
+    /// String flags can be unnamed, provided that there are no
+    /// other string unnamed flags in a given context.
+    ///
+    /// Unnamed string flags cannot start with + or -.
     FSHIP_STR,
 } FShipType;
 
@@ -285,6 +326,8 @@ struct __FShipResult {
     };
 };
 
+/// @brief Flagship context.
+/// @warning Do not modify context directly.
 typedef struct {
     struct {
         size_t cap;
@@ -314,98 +357,252 @@ typedef struct {
     size_t current_mode;
 } FShipContext;
 
+/// @brief Settings for flags.
 struct FShipSettings {
+    /// @brief Description for flag.
     const char* description;
+    /// @brief Note for flag.
     const char* note;
+    /// @brief Warning for flag.
     const char* warning;
+    /// @brief Default value for flag.
     const char* default_value;
 
+    /// @brief Array of string aliases for flag.
+    /// @details
+    /// Must always end with a NULL pointer.
+    /// Use fls_strings() to create a correct array of strings.
     const char** aliases;
 
+    /// @brief If flag is required.
+    /// @details
+    /// It's only required for the current mode.
+    /// If it's a flag that appears in all modes and is
+    /// always required, redefine the flag for each mode.
     bool is_required;
+    /// @brief If parsing should stop after this flag is parsed.
     bool is_terminating;
 
+    /// @brief Union of settings for different types.
     union {
+        /// @brief Boolean flag settings.
         struct {
+            /// @brief If flag should start true and setting it sets it to false.
             bool is_flipped;
+            /// @brief If flag should toggle every time it is encountered.
             bool is_toggle;
         } boolean;
+        /// @brief Integer flag settings.
         struct {
+            /// @brief Minimum range for integer, inclusive.
+            /// @note If min == max, range is full int64 range.
             int64_t min;
+            /// @brief Maximum range for integer, exclusive.
+            /// @note If min == max, range is full int64 range.
             int64_t max;
         } integer;
+        /// @brief Float flag settings.
         struct {
+            /// @brief Minimum range for float, inclusive.
+            /// @note If min == max, range is full double range.
             double min;
+            /// @brief Maximum range for float, exclusive.
+            /// @note If min == max, range is full double range.
             double max;
         } flt;
+        /// @brief String flag settings.
         struct {
+            /// @brief List of strings that are valid.
+            /// @details
+            /// Must always end with a NULL pointer.
+            /// Use fls_strings() to create a correct array of strings.
             const char** valid;
         } str;
     };
 };
 
+/// @brief Settings for reading flags.
 struct FShipReadOut {
-    // if flag name is found at all
+    /// @brief If flag name is found at all.
     bool* is_found;
-    // if flag is set in arguments
+    /// @brief If flag was set by user.
     bool* is_set;
-    // if flag value is valid
+    /// @brief If flag value is valid according to settings.
     bool* is_valid;
-    // if flag value matches with read type
+    /// @brief If flag type matches with read type.
     bool* is_type_correct;
-    // if flag was successfully cast
+    /// @brief If flag type does not match but was successfully cast.
     bool* is_type_cast;
 };
 
+/// @brief Create a list of strings.
+/// @details Appends NULL pointer to end of list.
+/// @param ... String literals.
 #define fls_strings( ... ) \
 (const char*[]){ __VA_ARGS__ __VA_OPT__(,) NULL }
 
+/// @brief Get name of type.
+/// @param type Type to get name of.
+/// @return Name of type.
 FSHIP_INL
 const char* fls_type_name( FShipType type );
+/// @brief Get format specifier of type.
+/// @param type Type to get name of.
+/// @return Format specifier of type.
 FSHIP_INL
 const char* fls_type_fmt( FShipType type );
 
+/// @brief Set name of program. This is usually argv[0].
+/// @param[in] ctx          Pointer to the context.
+/// @param[in] program_name Program name string.
+///                           The context copies strings to its internal buffer.
 FSHIP_INL
 void fls_set_program_name( FShipContext* ctx, const char* program_name );
 FSHIP_INL FSHIP_FMT_FN(2,3)
 void fls_set_description( FShipContext* ctx, const char* description, ... );
 
+/// @brief Begin new mode.
+/// @details
+/// If mode already exists, switches to existing mode.
+///
+/// Modes are set when the first argument is the name of a given mode.
+/// For example:
+///
+/// ./program mode_name [args...]
+///
+/// @warning
+/// Mode name cannot start with - or +
+///
+/// @param[in] ctx  Pointer to the context.
+/// @param[in] name Name of mode.
+///                   The context copies strings to its internal buffer.
 FSHIP_INL
 void fls_mode_begin( FShipContext* ctx, const char* name );
+/// @brief End current mode and return to default mode.
+/// @param[in] ctx Pointer to the context.
 FSHIP_INL
 void fls_mode_end( FShipContext* ctx );
 FSHIP_INL FSHIP_FMT_FN(2,3)
 void fls_mode_set_description( FShipContext* ctx, const char* description, ... );
+/// @brief Set if current mode should terminate parsing immediately.
+/// @param[in] ctx Pointer to the context.
 FSHIP_INL
 void fls_mode_set_terminating( FShipContext* ctx );
 
+/// @brief Add a boolean flag to the current mode.
+/// @warning
+/// Boolean flags cannot be unnamed.
+/// @param[in] ctx  Pointer to the context.
+/// @param[in] name Name of flag. This is the primary name and used to search flags when reading.
+/// @param     ...  Flag settings. See FShipSettings.
 #define fls_add_flag( ctx, name, ... ) \
     __fls_add_flag( ctx, name, (struct FShipSettings){ __VA_ARGS__ } )
+/// @brief Add an integer flag to the current mode.
+/// @details
+/// If name is NULL, creates an unnamed flag.
+/// @warning
+/// Only one integer/float flag can be unnamed in a given mode.
+/// @param[in] ctx  Pointer to the context.
+/// @param[in] name Name of flag. This is the primary name and used to search flags when reading.
+/// @param     ...  Flag settings. See FShipSettings.
 #define fls_add_int( ctx, name, ... ) \
     __fls_add_int( ctx, name, (struct FShipSettings){ __VA_ARGS__ } )
+/// @brief Add a float flag to the current mode.
+/// @details
+/// If name is NULL, creates an unnamed flag.
+/// @warning
+/// Only one integer/float flag can be unnamed in a given mode.
+/// @param[in] ctx  Pointer to the context.
+/// @param[in] name Name of flag. This is the primary name and used to search flags when reading.
+/// @param     ...  Flag settings. See FShipSettings.
 #define fls_add_flt( ctx, name, ... ) \
     __fls_add_flt( ctx, name, (struct FShipSettings){ __VA_ARGS__ } )
+/// @brief Add a string flag to the current mode.
+/// @details
+/// If name is NULL, creates an unnamed flag.
+/// @warning
+/// Only one string flag can be unnamed in a given mode.
+/// @param[in] ctx  Pointer to the context.
+/// @param[in] name Name of flag. This is the primary name and used to search flags when reading.
+/// @param     ...  Flag settings. See FShipSettings.
 #define fls_add_str( ctx, name, ... ) \
     __fls_add_str( ctx, name, (struct FShipSettings){ __VA_ARGS__ } )
 
+/// @brief Print help message for context and mode.
+/// @param[in] ctx            Pointer to the context.
+/// @param[in] opt_mode       (optional) Name of mode to print help for.
+///                             Can be NULL, in which case the default mode's
+///                             help message is printed.
+/// @param     opt_show_modes (optional) Show all modes and their descriptions.
 FSHIP_INL
 void fls_help( FShipContext* ctx, const char* opt_mode, bool opt_show_modes );
 
+/// @brief Parse arguments.
+/// @details
+/// Do not skip first argument, usually name of the program.
+/// @param[in]  ctx              Pointer to the context.
+/// @param      argc             Number of arguments. Obtained from main function.
+/// @param[in]  argv             Pointer to arguments. Obtained from main function.
+/// @param[out] opt_out_last_arg (optional) Pointer to write index of last argument read.
+/// @return
+///     - @c true  : Arguments were parsed successfully.
+///     - @c false : Failed to parse arguments.
 FSHIP_INL
 bool fls_parse( FShipContext* ctx, int argc, char** argv, int* opt_out_last_arg );
 
+/// @brief Query current mode, after parsing.
+/// @warning
+/// Only call this function after fls_parse()!
+/// @param[in] ctx Pointer to the context.
+/// @return Name of the current mode. If NULL, current mode is the default mode.
 FSHIP_INL
 const char* fls_query_mode( FShipContext* ctx );
 
+/// @brief Read boolean flag.
+/// @warning
+/// Only call this function after fls_parse()!
+/// @param[in] ctx  Pointer to the context.
+/// @param[in] name Name of flag to read.
+/// @param     ...  Read settings. See FShipReadOut.
+/// @return Boolean flag result.
 #define fls_read_flag( ctx, name, ... ) \
     __fls_read_flag( ctx, name, (struct FShipReadOut){ __VA_ARGS__ } )
+/// @brief Read integer flag.
+/// @warning
+/// Only call this function after fls_parse()!
+/// @param[in] ctx  Pointer to the context.
+/// @param[in] name Name of flag to read. Can be NULL for unnamed flag.
+/// @param     ...  Read settings. See FShipReadOut.
+/// @return Integer flag result.
 #define fls_read_int( ctx, name, ... ) \
     __fls_read_int( ctx, name, (struct FShipReadOut){ __VA_ARGS__ } )
+/// @brief Read float flag.
+/// @warning
+/// Only call this function after fls_parse()!
+/// @param[in] ctx  Pointer to the context.
+/// @param[in] name Name of flag to read. Can be NULL for unnamed flag.
+/// @param     ...  Read settings. See FShipReadOut.
+/// @return Float flag result.
 #define fls_read_flt( ctx, name, ... ) \
     __fls_read_flt( ctx, name, (struct FShipReadOut){ __VA_ARGS__ } )
+/// @brief Read string flag.
+/// @warning
+/// Only call this function after fls_parse()!
+/// @param[in] ctx  Pointer to the context.
+/// @param[in] name Name of flag to read. Can be NULL for unnamed flag.
+/// @param     ...  Read settings. See FShipReadOut.
+/// @return
+/// String flag result.
+///
+/// Returned string is never NULL.
+///
+/// Use @c .is_set to check if flag was set.
+/// Use @c .is_found to check if flag exists in the context at all.
 #define fls_read_str( ctx, name, ... ) \
     __fls_read_str( ctx, name, (struct FShipReadOut){ __VA_ARGS__ } )
 
+/// @brief Free context.
+/// @param[in] ctx Pointer to the context.
 FSHIP_INL
 void fls_free( FShipContext* ctx );
 
@@ -524,6 +721,11 @@ FSHIP_INL
 void fls_set_program_name( FShipContext* ctx, const char* program_name ) {
     ctx->program_name = __fls_str( ctx, "%s", program_name );
 }
+/// @brief Set description of program.
+/// @param[in] ctx         Pointer to the context.
+/// @param[in] description Description of program.
+///                          This is a format string.
+/// @param     ...         Arguments for description format string.
 FSHIP_INL
 void fls_set_description( FShipContext* ctx, const char* description, ... ) {
     va_list va;
@@ -534,6 +736,10 @@ void fls_set_description( FShipContext* ctx, const char* description, ... ) {
 
 FSHIP_INL
 void fls_free( FShipContext* ctx ) {
+    if( !ctx ) {
+        return;
+    }
+
     if( ctx->modes.ptr ) {
         for( size_t i = 0; i < ctx->modes.len; ++i ) {
             struct __FShipMode* mode = ctx->modes.ptr;
@@ -673,7 +879,12 @@ void fls_mode_end( FShipContext* ctx ) {
     ctx->current_mode = 0;
 }
 
-FSHIP_INL FSHIP_FMT_FN(2,3)
+/// @brief Set description for the current mode.
+/// @param[in] ctx         Pointer to the context.
+/// @param[in] description Description for the current mode.
+///                          This is a format string.
+/// @param     ...         Arguments for description format string.
+FSHIP_INL
 void fls_mode_set_description( FShipContext* ctx, const char* description, ... ) {
     struct __FShipMode* mode = ctx->modes.ptr + ctx->current_mode;
 
@@ -2335,8 +2546,8 @@ const char* fls_type_name( FShipType type ) {
 FSHIP_INL
 const char* fls_type_fmt( FShipType type ) {
     switch( type ) {
-        case FSHIP_BOOL : return "bool";
-        case FSHIP_INT  : return "%i";
+        case FSHIP_BOOL : return "%d";
+        case FSHIP_INT  : return "%" PRId64;
         case FSHIP_FLT  : return "%f";
         case FSHIP_STR  : return "%s";
     }
@@ -2344,3 +2555,4 @@ const char* fls_type_fmt( FShipType type ) {
 }
 
 #endif /* header guard */
+
