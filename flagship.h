@@ -10,10 +10,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <inttypes.h>
+// #include <stdio.h>
+// #include <stdlib.h>
+// #include <string.h>
 
 #undef FSHIP_INL
 #if __cplusplus
@@ -25,6 +25,171 @@
 #undef FSHIP_FMT_FN
 #define FSHIP_FMT_FN(FormatIndex, ArgIndex) \
 __attribute__((format(printf, FormatIndex, ArgIndex)))
+
+#if !( \
+    defined(FSHIP_STDOUT_FMT)    && \
+    defined(FSHIP_STDERR_FMT)    && \
+    defined(FSHIP_STDOUT_FMT_VA) && \
+    defined(FSHIP_STDERR_FMT_VA) && \
+    defined(FSHIP_COUNT_FMT)     && \
+    defined(FSHIP_COUNT_FMT_VA)  && \
+    defined(FSHIP_FMT)           && \
+    defined(FSHIP_FMT_VA)           \
+) \
+
+#include <stdio.h>
+
+#undef FSHIP_STDOUT_FMT
+#undef FSHIP_STDERR_FMT
+#undef FSHIP_STDOUT_FMT_VA
+#undef FSHIP_STDERR_FMT_VA
+#undef FSHIP_COUNT_FMT
+#undef FSHIP_COUNT_FMT_VA
+#undef FSHIP_FMT
+#undef FSHIP_FMT_VA
+
+#define FSHIP_STDOUT_FMT( fmt, ... ) \
+    fprintf( stdout, fmt __VA_OPT__(,) __VA_ARGS__ )
+
+#define FSHIP_STDERR_FMT( fmt, ... ) \
+    fprintf( stderr, fmt __VA_OPT__(,) __VA_ARGS__ )
+
+#define FSHIP_STDOUT_FMT_VA( fmt, va ) \
+    vfprintf( stdout, fmt, va )
+
+#define FSHIP_STDERR_FMT_VA( fmt, va ) \
+    vfprintf( stderr, fmt, va )
+
+#define FSHIP_COUNT_FMT( fmt, ... ) \
+    snprintf( NULL, 0, fmt __VA_OPT__(,) __VA_ARGS__ )
+
+#define FSHIP_COUNT_FMT_VA( fmt, va ) \
+    vsnprintf( NULL, 0, fmt, va )
+
+#define FSHIP_FMT( ptr, size, fmt, ... ) \
+    snprintf( ptr, size, fmt __VA_OPT__(,) __VA_ARGS__ )
+
+#define FSHIP_FMT_VA( ptr, size, fmt, va ) \
+    vsnprintf( ptr, size, fmt, va )
+
+#endif /* stdout, stderr */
+
+#if !( \
+    defined(FSHIP_MEMSET)       && \
+    defined(FSHIP_MEMCMP)       && \
+    defined(FSHIP_STRLEN)       && \
+    defined(FSHIP_STRCMP)       && \
+    defined(FSHIP_STRCHR)          \
+) \
+
+#undef FSHIP_MEMSET
+#undef FSHIP_MEMCMP
+#undef FSHIP_STRLEN
+#undef FSHIP_STRCMP
+#undef FSHIP_STRCHR
+
+#include <string.h>
+
+#define FSHIP_MEMSET( ptr, ch, size ) \
+    memset( ptr, ch, size )
+
+#define FSHIP_STRLEN( ptr ) \
+    strlen( ptr )
+
+FSHIP_INL
+bool __fls_strcmp( const char* a, const char* b ) {
+    return strcmp( a, b ) == 0;
+}
+
+#define FSHIP_STRCMP( a, b ) \
+    __fls_strcmp( a, b )
+
+FSHIP_INL
+bool __fls_memcmp( const void* a, const void* b, size_t len ) {
+    return memcmp( a, b, len ) == 0;
+}
+
+#define FSHIP_MEMCMP( a, b, len ) \
+    __fls_memcmp( a, b, len )
+
+#define FSHIP_STRCHR( string, ch ) \
+    strchr( string, ch )
+
+#endif /* memset, strlen, memcmp, strtod, strtoll, strchr, strcmp */
+
+#if !( \
+    defined(FSHIP_DBL_FROM_STR) && \
+    defined(FSHIP_INT_FROM_STR) && \
+    defined(FSHIP_ALLOC)        && \
+    defined(FSHIP_FREE)            \
+) \
+
+#include <stdlib.h>
+
+#undef FSHIP_ALLOC
+#undef FSHIP_FREE
+#undef FSHIP_DBL_FROM_STR
+#undef FSHIP_INT_FROM_STR
+
+FSHIP_INL
+bool __fls_dbl_from_str( const char* string, double* out_value ) {
+    char* endptr = NULL;
+
+    double value = strtod( string, &endptr );
+
+    const char* end_of_string = string + FSHIP_STRLEN( string );
+
+    if( string != endptr && endptr == end_of_string ) {
+        *out_value = value;
+        return true;
+    }
+
+    return false;
+}
+
+#define FSHIP_DBL_FROM_STR( string, out_value ) \
+    __fls_dbl_from_str( string, out_value )
+
+FSHIP_INL
+bool __fls_int_from_str( const char* string, int64_t* out_value ) {
+    char* endptr = NULL;
+
+    int64_t value = strtoll( string, &endptr, 10 );
+
+    const char* end_of_string = string + FSHIP_STRLEN( string );
+
+    if( string != endptr && endptr == end_of_string ) {
+        *out_value = value;
+        return true;
+    }
+
+    return false;
+}
+
+#define FSHIP_INT_FROM_STR( string, out_value ) \
+    __fls_int_from_str( string, out_value )
+
+FSHIP_INL
+void* __fls_alloc( void* ptr, size_t old_size, size_t new_size ) {
+    void* result = realloc( ptr, new_size );
+    if( !result ) {
+        return NULL;
+    }
+
+    for( size_t i = old_size; i < (new_size - old_size); ++i ) {
+        *((char*)result + i) = 0;
+    }
+
+    return result;
+}
+
+#define FSHIP_ALLOC( ptr, old_size, new_size ) \
+    __fls_alloc( ptr, old_size, new_size )
+
+#define FSHIP_FREE( ptr, size ) \
+    free( ptr )
+
+#endif /* alloc, free */
 
 #define FSHIP_COLOR_BLACK   "\033[1;30m"
 #define FSHIP_COLOR_WHITE   "\033[1;37m"
@@ -100,6 +265,8 @@ struct __FShipMode {
 
     size_t name;
     size_t description;
+
+    bool is_terminating;
 };
 
 struct __FShipResult {
@@ -209,6 +376,8 @@ FSHIP_INL
 void fls_mode_end( FShipContext* ctx );
 FSHIP_INL FSHIP_FMT_FN(2,3)
 void fls_mode_set_description( FShipContext* ctx, const char* description, ... );
+FSHIP_INL
+void fls_mode_set_terminating( FShipContext* ctx );
 
 #define fls_add_flag( ctx, name, ... ) \
     __fls_add_flag( ctx, name, (struct FShipSettings){ __VA_ARGS__ } )
@@ -262,26 +431,26 @@ const char* __fls_read_str( FShipContext* ctx, const char* name, struct FShipRea
 
 FSHIP_INL
 void __fls_warn( const char* fmt, ... ) {
-    fprintf( stderr, FSHIP_COLOR_YELLOW );
+    FSHIP_STDERR_FMT( FSHIP_COLOR_YELLOW );
 
     va_list va;
     va_start( va, fmt );
-    vfprintf( stderr, fmt, va );
+    FSHIP_STDERR_FMT_VA( fmt, va );
     va_end( va );
 
-    fprintf( stderr, FSHIP_COLOR_RESET "\n" );
+    FSHIP_STDERR_FMT( FSHIP_COLOR_RESET "\n" );
 }
 
 FSHIP_INL
 void __fls_err( const char* fmt, ... ) {
-    fprintf( stderr, FSHIP_COLOR_RED );
+    FSHIP_STDERR_FMT( FSHIP_COLOR_RED );
 
     va_list va;
     va_start( va, fmt );
-    vfprintf( stderr, fmt, va );
+    FSHIP_STDERR_FMT_VA( fmt, va );
     va_end( va );
 
-    fprintf( stderr, FSHIP_COLOR_RESET "\n" );
+    FSHIP_STDERR_FMT( FSHIP_COLOR_RESET "\n" );
 }
 
 FSHIP_INL
@@ -291,7 +460,7 @@ void __fls_str_init( FShipContext* ctx, size_t initial ) {
     initial += sizeof(int);
 
     ctx->string.cap = initial;
-    ctx->string.ptr = (char*)calloc( 1, initial );
+    ctx->string.ptr = (char*)FSHIP_ALLOC( NULL, 0, initial );
 }
 
 FSHIP_INL
@@ -312,9 +481,7 @@ void __fls_str_reserve( FShipContext* ctx, size_t required ) {
     size_t old_size = ctx->string.cap;
     size_t new_size = ctx->string.cap + allocate_size;
 
-    char* new_ptr = (char*)realloc( ctx->string.ptr, new_size );
-
-    memset( new_ptr + old_size, 0, new_size - old_size );
+    char* new_ptr = (char*)FSHIP_ALLOC( ctx->string.ptr, old_size, new_size );
 
     ctx->string.cap = new_size;
     ctx->string.ptr = new_ptr;
@@ -325,7 +492,7 @@ size_t __fls_str_va( FShipContext* ctx, const char* fmt, va_list va ) {
     va_list va2;
     va_copy( va2, va );
 
-    size_t len = vsnprintf( NULL, 0, fmt, va2 );
+    size_t len = FSHIP_COUNT_FMT_VA( fmt, va2 );
 
     va_end( va2 );
 
@@ -333,7 +500,7 @@ size_t __fls_str_va( FShipContext* ctx, const char* fmt, va_list va ) {
 
     size_t result = ctx->string.len;
 
-    vsnprintf(
+    FSHIP_FMT_VA(
         ctx->string.ptr + ctx->string.len,
         ctx->string.cap - ctx->string.len,
         fmt, va );
@@ -375,24 +542,24 @@ void fls_free( FShipContext* ctx ) {
                     struct __FShipArg* arg = mode->ptr + j;
 
                     if( arg->aliases.ptr ) {
-                        free( arg->aliases.ptr );
+                        FSHIP_FREE( arg->aliases.ptr, sizeof(size_t) * arg->aliases.len );
                     }
 
                     if( arg->type == FSHIP_STR ) {
                         if( arg->str.valid.ptr ) {
-                            free( arg->str.valid.ptr );
+                            FSHIP_FREE( arg->str.valid.ptr, sizeof(size_t) * arg->str.valid.len );
                         }
                     }
                 }
 
-                free( mode->ptr );
+                FSHIP_FREE( mode->ptr, sizeof(struct __FShipArg) * mode->cap );
             }
         }
-        free( ctx->modes.ptr );
+        FSHIP_FREE( ctx->modes.ptr, sizeof(struct __FShipMode) * ctx->modes.cap );
     }
 
-    free( ctx->string.ptr );
-    memset( ctx, 0, sizeof(FShipContext) );
+    FSHIP_FREE( ctx->string.ptr, ctx->string.cap );
+    FSHIP_MEMSET( ctx, 0, sizeof(FShipContext) );
 }
 
 FSHIP_INL
@@ -400,7 +567,8 @@ void __fls_mode_init( FShipContext* ctx ) {
     ctx->modes.cap = 4;
     // NOTE(alicia): this is the default mode.
     ctx->modes.len = 1;
-    ctx->modes.ptr = (struct __FShipMode*)calloc( ctx->modes.cap, sizeof(struct __FShipMode) );
+    ctx->modes.ptr =
+        (struct __FShipMode*)FSHIP_ALLOC( NULL, 0, sizeof(struct __FShipMode) * ctx->modes.cap );
 }
 
 FSHIP_INL
@@ -414,9 +582,8 @@ void __fls_mode_reserve( FShipContext* ctx ) {
     size_t old_size = sizeof(struct __FShipMode) * ctx->modes.cap;
     size_t new_size = sizeof(struct __FShipMode) * new_cap;
 
-    struct __FShipMode* new_ptr = (struct __FShipMode*)realloc( ctx->modes.ptr, new_size );
-
-    memset( (char*)new_ptr + old_size, 0, new_size - old_size );
+    struct __FShipMode* new_ptr =
+        (struct __FShipMode*)FSHIP_ALLOC( ctx->modes.ptr, old_size, new_size );
 
     ctx->modes.cap = new_cap;
     ctx->modes.ptr = new_ptr;
@@ -452,7 +619,7 @@ struct __FShipMode* __fls_search_mode( FShipContext* ctx, const char* name ) {
 
         const char* mode_name = ctx->string.ptr + mode->name;
 
-        if( strcmp( mode_name, name ) == 0 ) {
+        if( FSHIP_STRCMP( mode_name, name ) ) {
             return mode;
         }
     }
@@ -476,7 +643,7 @@ void fls_mode_begin( FShipContext* ctx, const char* name ) {
 
             const char* current_name = ctx->string.ptr + current->name;
 
-            if( strcmp( current_name, name ) == 0 ) {
+            if( FSHIP_STRCMP( current_name, name ) ) {
                 ctx->current_mode = i;
                 return;
             }
@@ -519,6 +686,13 @@ void fls_mode_set_description( FShipContext* ctx, const char* description, ... )
 }
 
 FSHIP_INL
+void fls_mode_set_terminating( FShipContext* ctx ) {
+    struct __FShipMode* mode = ctx->modes.ptr + ctx->current_mode;
+
+    mode->is_terminating = !mode->is_terminating;
+}
+
+FSHIP_INL
 struct __FShipMode* __fls_get_mode( FShipContext* ctx ) {
     if( !ctx->modes.ptr ) {
         __fls_mode_init( ctx );
@@ -540,9 +714,9 @@ void __fls_arg_reserve( struct __FShipMode* mode ) {
     size_t old_size = sizeof(struct __FShipArg) * mode->cap;
     size_t new_size = sizeof(struct __FShipArg) * new_cap;
 
-    struct __FShipArg* new_ptr = (struct __FShipArg*)realloc( mode->ptr, new_size );
+    struct __FShipArg* new_ptr =
+        (struct __FShipArg*)FSHIP_ALLOC( mode->ptr, old_size, new_size );
 
-    memset( (char*)new_ptr + old_size, 0, new_size - old_size );
     mode->cap = new_cap;
     mode->ptr = new_ptr;
 }
@@ -565,7 +739,7 @@ struct __FShipArg* __fls_arg_search(
 
     int search_type = SEARCH_FLAG;
 
-    size_t name_len = strlen( name );
+    size_t name_len = FSHIP_STRLEN( name );
 
     if( name[0] != '-' ) {
         bool has_non_alphanumeric = false;
@@ -615,7 +789,7 @@ struct __FShipArg* __fls_arg_search(
         case SEARCH_FLAG: {
             const char* name_start = name + 1;
             name_len--; {
-                const char* colon = strchr( name_start, ':' );
+                const char* colon = FSHIP_STRCHR( name_start, ':' );
                 if( colon ) {
                     name_len = (size_t)colon - (size_t)name_start;
                 }
@@ -630,20 +804,20 @@ struct __FShipArg* __fls_arg_search(
                 }
 
                 const char* current_name     = ctx->string.ptr + arg->name;
-                size_t      current_name_len = strlen( current_name );
+                size_t      current_name_len = FSHIP_STRLEN( current_name );
 
                 if( current_name_len == name_len ) {
-                    if( memcmp( current_name, name_start, name_len ) == 0 ) {
+                    if( FSHIP_MEMCMP( current_name, name_start, name_len ) ) {
                         return arg;
                     }
                 }
 
                 for( size_t j = 0; j < arg->aliases.len; ++j ) {
                     current_name     = ctx->string.ptr + arg->aliases.ptr[j];
-                    current_name_len = strlen( current_name );
+                    current_name_len = FSHIP_STRLEN( current_name );
 
                     if( current_name_len == name_len ) {
-                        if( memcmp( current_name, name_start, name_len ) == 0 ) {
+                        if( FSHIP_MEMCMP( current_name, name_start, name_len ) ) {
                             return arg;
                         }
                     }
@@ -730,7 +904,7 @@ void __fls_init_arg( FShipContext* ctx, struct __FShipArg* arg, struct FShipSett
 
     if( alias_count ) {
         arg->aliases.len = alias_count;
-        arg->aliases.ptr = (size_t*)calloc( arg->aliases.len, sizeof(size_t) );
+        arg->aliases.ptr = (size_t*)FSHIP_ALLOC( NULL, 0, sizeof(size_t) * arg->aliases.len );
 
         size_t at = 0;
 
@@ -758,7 +932,7 @@ void __fls_add_flag( FShipContext* ctx, const char* name, struct FShipSettings s
     arg.type = FSHIP_BOOL;
 
     if( !name ) {
-        fprintf( stderr, "Failed to add null boolean flag! Boolean flags require a name!\n" );
+        FSHIP_STDERR_FMT( "Failed to add null boolean flag! Boolean flags require a name!\n" );
         return;
     }
 
@@ -768,9 +942,9 @@ void __fls_add_flag( FShipContext* ctx, const char* name, struct FShipSettings s
 
     if( settings.default_value ) {
         arg.has_default = true;
-        if( strcmp( settings.default_value, "true" ) == 0 ) {
+        if( FSHIP_STRCMP( settings.default_value, "true" ) ) {
             arg.boolean.value = true;
-        } else if( strcmp( settings.default_value, "false" ) == 0 ) {
+        } else if( FSHIP_STRCMP( settings.default_value, "false" ) ) {
             arg.boolean.value = false;
         }
     }
@@ -804,8 +978,7 @@ void __fls_add_int( FShipContext* ctx, const char* name, struct FShipSettings se
         }
 
         if( already_has_nameless_number ) {
-            fprintf(
-                stderr,
+            FSHIP_STDERR_FMT(
                 "Failed to add nameless number flag! This mode already has another one!\n" );
             return;
         }
@@ -814,20 +987,12 @@ void __fls_add_int( FShipContext* ctx, const char* name, struct FShipSettings se
     __fls_init_arg( ctx, &arg, &settings );
 
     if( settings.default_value ) {
-        char* endptr = NULL;
-
-        int64_t value = strtoll( settings.default_value, &endptr, 10 );
-
-        const char* end_of_string = settings.default_value + strlen( settings.default_value );
-        if(
-            settings.default_value != endptr &&
-            endptr == end_of_string
-        ) {
+        int64_t value = 0;
+        if( FSHIP_INT_FROM_STR( settings.default_value, &value ) ) {
             arg.has_default   = true;
             arg.integer.value = value;
         } else {
-            fprintf(
-                stderr,
+            FSHIP_STDERR_FMT(
                 "Failed to parse integer '%s' for %s",
                 settings.default_value, name ? name : "nameless integer" );
         }
@@ -862,8 +1027,7 @@ void __fls_add_flt( FShipContext* ctx, const char* name, struct FShipSettings se
         }
 
         if( already_has_nameless_number ) {
-            fprintf(
-                stderr,
+            FSHIP_STDERR_FMT(
                 "Failed to add nameless number flag! This mode already has another one!\n" );
             return;
         }
@@ -872,22 +1036,14 @@ void __fls_add_flt( FShipContext* ctx, const char* name, struct FShipSettings se
     __fls_init_arg( ctx, &arg, &settings );
 
     if( settings.default_value ) {
-        char* endptr = NULL;
-
-        double value = strtod( settings.default_value, &endptr );
-
-        const char* end_of_string = settings.default_value + strlen( settings.default_value );
-        if(
-            settings.default_value != endptr &&
-            endptr == end_of_string
-        ) {
+        double value = 0.0;
+        if( FSHIP_DBL_FROM_STR( settings.default_value, &value ) ) {
             arg.has_default = true;
             arg.flt.value   = value;
         } else {
-            fprintf(
-                stderr,
+            FSHIP_STDERR_FMT(
                 "Failed to parse float '%s' for %s",
-                settings.default_value, name ? name : "nameless integer" );
+                settings.default_value, name ? name : "nameless float" );
         }
     }
 
@@ -921,8 +1077,7 @@ void __fls_add_str( FShipContext* ctx, const char* name, struct FShipSettings se
         }
 
         if( already_has_nameless_string ) {
-            fprintf(
-                stderr,
+            FSHIP_STDERR_FMT(
                 "Failed to add nameless string flag! This mode already has another one!\n" );
             return;
         }
@@ -948,7 +1103,7 @@ void __fls_add_str( FShipContext* ctx, const char* name, struct FShipSettings se
 
     if( valid_count ) {
         arg.str.valid.len = valid_count;
-        arg.str.valid.ptr = (size_t*)calloc( valid_count, sizeof(size_t) );
+        arg.str.valid.ptr = (size_t*)FSHIP_ALLOC( NULL, 0, sizeof(size_t) * valid_count );
 
         size_t at = 0;
 
@@ -1023,7 +1178,7 @@ void fls_help( FShipContext* ctx, const char* opt_mode, bool opt_show_modes ) {
                 continue;
             }
 
-            size_t mode_len = snprintf( NULL, 0, "  %s", ctx->string.ptr + current->name );
+            size_t mode_len = FSHIP_COUNT_FMT( "  %s", ctx->string.ptr + current->name );
 
             if( mode_len > max_mode_len ) {
                 max_mode_len = mode_len;
@@ -1072,10 +1227,10 @@ void fls_help( FShipContext* ctx, const char* opt_mode, bool opt_show_modes ) {
             const char* arg_name = ctx->string.ptr + arg->name;
 
             if( arg->type == FSHIP_BOOL ) {
-                arg_len = snprintf( NULL, 0, "  -%s", arg_name );
+                arg_len = FSHIP_COUNT_FMT( "  -%s", arg_name );
             } else {
-                arg_len = snprintf(
-                    NULL, 0, "  -%s <%s>, -%s:<%s>",
+                arg_len = FSHIP_COUNT_FMT(
+                    "  -%s <%s>, -%s:<%s>",
                     arg_name, type_name, arg_name, type_name );
             }
 
@@ -1093,10 +1248,10 @@ void fls_help( FShipContext* ctx, const char* opt_mode, bool opt_show_modes ) {
                 size_t alias_len = 0;
 
                 if( arg->type == FSHIP_BOOL ) {
-                    alias_len = snprintf( NULL, 0, "  -%s", alias );
+                    alias_len = FSHIP_COUNT_FMT( "  -%s", alias );
                 } else {
-                    alias_len = snprintf(
-                        NULL, 0, "  -%s <%s>, -%s:<%s>",
+                    alias_len = FSHIP_COUNT_FMT(
+                        "  -%s <%s>, -%s:<%s>",
                         alias, type_name, alias, type_name );
                 }
 
@@ -1110,7 +1265,7 @@ void fls_help( FShipContext* ctx, const char* opt_mode, bool opt_show_modes ) {
                 }
             }
         } else {
-            arg_len = snprintf( NULL, 0, "  <%s>", type_name );
+            arg_len = FSHIP_COUNT_FMT( "  <%s>", type_name );
         }
 
         if( arg_len > arg_max_len ) {
@@ -1424,9 +1579,8 @@ void __fls_result_reserve( FShipContext* ctx ) {
     size_t old_size = sizeof(struct __FShipResult) * ctx->result.cap;
     size_t new_size = sizeof(struct __FShipResult) * new_cap;
 
-    struct __FShipResult* new_ptr = (struct __FShipResult*)realloc( ctx->result.ptr, new_size );
-
-    memset( (char*)new_ptr + old_size, 0, new_size - old_size );
+    struct __FShipResult* new_ptr =
+        (struct __FShipResult*)FSHIP_ALLOC( ctx->result.ptr, old_size, new_size );
 
     ctx->result.cap = new_cap;
     ctx->result.ptr = new_ptr;
@@ -1445,7 +1599,7 @@ void __fls_result_push( FShipContext* ctx, struct __FShipResult* value ) {
 
         if( value->name ) {
             if( current->name ) {
-                if( strcmp( value->name, current->name ) == 0 ) {
+                if( FSHIP_STRCMP( value->name, current->name ) ) {
                     is_unique = false;
                     break;
                 }
@@ -1522,7 +1676,9 @@ bool fls_parse( FShipContext* ctx, int argc, char** argv, int* opt_out_last_arg 
             return false;
         }
 
-        index++;
+        if( !mode->is_terminating ) {
+            index++;
+        }
     }
 
     if( !mode ) {
@@ -1538,13 +1694,18 @@ bool fls_parse( FShipContext* ctx, int argc, char** argv, int* opt_out_last_arg 
     }
 
     ctx->result.mode_name  = mode_name;
-    ctx->result.mode_index = (size_t)( (char*)mode - (char*)ctx->modes.ptr ) / sizeof(struct __FShipMode);
+    ctx->result.mode_index =
+        (size_t)( (char*)mode - (char*)ctx->modes.ptr ) / sizeof(struct __FShipMode);
 
     bool success = true;
     size_t required_count   = __fls_mode_required_count( mode );
     size_t required_counter = 0;
 
     for( ; index < argc; ++index ) {
+        if( mode->is_terminating ) {
+            break;
+        }
+
         const char* arg_text = argv[index];
         if( arg_text[0] == '+' ) {
             if( (index + 1) < argc ) {
@@ -1584,7 +1745,7 @@ bool fls_parse( FShipContext* ctx, int argc, char** argv, int* opt_out_last_arg 
         if( is_unnamed ) {
             payload = arg_text;
         } else {
-            if( (payload = strchr( arg_text, ':' )) ) {
+            if( (payload = FSHIP_STRCHR( arg_text, ':' )) ) {
                 payload++;
             } else if( result.type != FSHIP_BOOL ) {
                 if(
@@ -1622,10 +1783,9 @@ bool fls_parse( FShipContext* ctx, int argc, char** argv, int* opt_out_last_arg 
             } break;
             case FSHIP_INT: {
                 if( payload ) {
-                    char*   endptr = NULL;
-                    int64_t value  = strtoll( payload, &endptr, 10 );
+                    int64_t value  = 0;
 
-                    if( payload == endptr ) {
+                    if( FSHIP_INT_FROM_STR( payload, &value ) ) {
                         __fls_err( "%s: could not parse integer! '%s'", result.name, payload );
                         success = false;
                     } else {
@@ -1657,10 +1817,9 @@ bool fls_parse( FShipContext* ctx, int argc, char** argv, int* opt_out_last_arg 
             } break;
             case FSHIP_FLT: {
                 if( payload ) {
-                    char*  endptr = NULL;
-                    double value  = strtod( payload, &endptr );
+                    double value = 0.0;
 
-                    if( payload == endptr ) {
+                    if( FSHIP_DBL_FROM_STR( payload, &value ) ) {
                         __fls_err( "%s: could not parse float! '%s'", result.name, payload );
                         success = false;
                     } else {
@@ -1699,7 +1858,7 @@ bool fls_parse( FShipContext* ctx, int argc, char** argv, int* opt_out_last_arg 
                     for( size_t i = 0; i < arg->str.valid.len; ++i ) {
                         const char* valid_text = ctx->string.ptr + arg->str.valid.ptr[i];
 
-                        if( strcmp( value, valid_text ) == 0 ) {
+                        if( FSHIP_STRCMP( value, valid_text ) ) {
                             is_valid = true;
                             break;
                         }
@@ -1791,7 +1950,7 @@ void __fls_flag_search(
         bool match = false;
         if( name ) {
             if( current->name ) {
-                match = strcmp( name, current->name ) == 0;
+                match = FSHIP_STRCMP( name, current->name );
             } else {
                 match = false;
             }
@@ -1864,15 +2023,15 @@ void __fls_flag_search(
                             case FSHIP_BOOL : {
                                 is_type_cast = true;
                                 *(bool*)out_value =
-                                    strcmp( current->str, "true" ) == 0 ? true : false;
+                                    FSHIP_STRCMP( current->str, "true" ) ? true : false;
                             } break;
                             case FSHIP_INT  : {
                                 is_type_cast = true;
-                                *(int64_t*)out_value = strtoll( current->str, NULL, 10 );
+                                FSHIP_INT_FROM_STR( current->str, (int64_t*)out_value );
                             } break;
                             case FSHIP_FLT  : {
                                 is_type_cast = true;
-                                *(double*)out_value = strtod( current->str, NULL );
+                                FSHIP_DBL_FROM_STR( current->str, (double*)out_value );
                             } break;
                             case FSHIP_STR  : break;
                         }
@@ -1898,7 +2057,7 @@ void __fls_flag_search(
         bool match = false;
         if( name ) {
             if( arg->name ) {
-                match = strcmp( name, ctx->string.ptr + arg->name ) == 0;
+                match = FSHIP_STRCMP( name, ctx->string.ptr + arg->name );
             } else {
                 match = false;
             }
@@ -1987,8 +2146,8 @@ void __fls_flag_search(
                                 case FSHIP_BOOL : {
                                     is_type_cast = true;
                                     if( arg->str.value ) {
-                                        *(bool*)out_value =
-                                            strcmp( ctx->string.ptr + arg->str.value, "true" ) == 0;
+                                        *(bool*)out_value = FSHIP_STRCMP(
+                                            ctx->string.ptr + arg->str.value, "true" );
                                     } else {
                                         *(bool*)out_value = false;
                                     }
@@ -1996,8 +2155,9 @@ void __fls_flag_search(
                                 case FSHIP_INT  : {
                                     is_type_cast = true;
                                     if( arg->str.value ) {
-                                        *(int64_t*)out_value =
-                                            strtoll( ctx->string.ptr + arg->str.value, NULL, 10 );
+                                        FSHIP_INT_FROM_STR(
+                                            ctx->string.ptr + arg->str.value,
+                                            (int64_t*)out_value );
                                     } else {
                                         *(int64_t*)out_value = 0;
                                     }
@@ -2005,8 +2165,8 @@ void __fls_flag_search(
                                 case FSHIP_FLT  : {
                                     is_type_cast = true;
                                     if( arg->str.value ) {
-                                        *(double*)out_value =
-                                            strtod( ctx->string.ptr + arg->str.value, NULL );
+                                        FSHIP_DBL_FROM_STR(
+                                            ctx->string.ptr + arg->str.value, (double*)out_value );
                                     } else {
                                         *(double*)out_value = 0.0;
                                     }

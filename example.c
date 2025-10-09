@@ -122,6 +122,12 @@ void make_flags( FShipContext* ctx, const char* program_name ) {
 
         fls_mode_end( ctx );
     }
+
+    fls_mode_begin( ctx, "term" ); {
+        fls_mode_set_description( ctx, "This mode passes flags to sub-process." );
+        fls_mode_set_terminating( ctx );
+        fls_mode_end( ctx );
+    }
 }
 
 int main( int argc, char** argv ) {
@@ -189,6 +195,15 @@ int main( int argc, char** argv ) {
                 }
                 printf( "'\n" );
             }
+        } else if( strcmp( mode, "term" ) == 0 ) {
+            printf( "passthrough: '" );
+            for( int i = last_arg + 1; i < argc; ++i ) {
+                printf( "%s", argv[i] );
+                if( (i + 1) < argc ) {
+                    printf( " " );
+                }
+            }
+            printf( "'\n" );
         }
     } else {
         fls_help( &ctx, NULL, true );
