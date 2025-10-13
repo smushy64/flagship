@@ -1589,6 +1589,8 @@ void fls_help( FShipContext* ctx, const char* opt_mode, bool opt_show_modes ) {
             has_valid       ||
             has_range;
 
+        (void)has_addendum;
+
         size_t max_addendum = 0;
         if( note ) {
             if( max_addendum < sizeof(TEXT_NOTE) ) {
