@@ -6,49 +6,90 @@ Header-only library for parsing command-line arguments.
 
 ```c
 // only need to include header, all functions are inline
-#include <flagship.h>
+#include "flagship.h"
 
-int main( int argc, char** argv ) {
-    // create context
-    // must always be zero-init
-    FShipContext ctx = {};
+int main(int argc, char** argv) {
+    // context holds all the data flagship will use
+    struct FlagshipContext ctx;
 
-    // create schema
-    fls_add_flag( &ctx, "flag-bool" );
-    fls_add_int( &ctx, "flag-integer" );
-    fls_add_flt( &ctx, "flag-float" );
-    fls_add_str( &ctx, "flag-string" );
+    // begin initializes the context
+    flagship_begin(&ctx); {
 
-    // add flag with settings
-    fls_add_flag( &ctx, "flag-bool-with-settings", .description="This is a description." );
+        // set the name of the program
+        // this will be used when printing generated help message
+        flagship_name(&ctx, argv[0]);
 
-    // add flag with aliases
-    fls_add_flag( &ctx, "flag-with-aliases", .aliases=fls_strings( "fwa", "another-alias" ) );
+        // set the description of the program
+        flagship_description(&ctx, "this is a program");
 
-    // define a mode
-    // mode names cannot start with - or +
-    fls_mode_begin( &ctx, "mode-name" ); {
-        fls_mode_set_description( &ctx, "Some description for the current mode." );
-        // to stop parsing once this mode is encountered:
-        // fls_mode_set_terminating( &ctx );
+        // create a new mode
+        // modes are an optional way to group flags together
+        flagship_begin_mode(&ctx); {
+            // set the name of this mode
+            // this is the primary name used to refer to this mode
+            // in subsequent calls
+            flagship_name(&ctx, "some-mode");
+            // subsequent calls will give this mode an alias
+            flagship_name(&ctx, "some-mode-alias");
+            // set the id for this mode.
+            // by default, modes are given id's in the order
+            // that they're created, starting from zero.
+            flagship_id(&ctx, 10);
+            // flag which tells flagship that changing to a different mode
+            // after encountering this mode is not allowed.
+            flagship_flag(&ctx, FLAGSHIP_MODE_UNIQUE, true);
 
-        // to set this flag when invoking program:
-        // ./program mode-name -some-flag
-        fls_add_flag( &ctx, "some-flag" );
+            // set the description of the program
+            flagship_description(&ctx, "this is a mode");
 
-        // always call this when done creating mode.
-        fls_mode_end( &ctx );
+            // create a new flag
+            flagship_begin_flag(&ctx, FLAGSHIP_TYPE_BOOL); {
+                // set name of flag
+                flagship_name(&ctx, "some-flag");
+
+                // finish this flag
+                flagship_end_flag(&ctx);
+            }
+
+            // you can also go back to an existing flag/mode to edit it.
+            // always uses the first name assigned to the flag, or null
+            flagship_begin_flag_existing(&ctx, FLAGSHIP_TYPE_BOOL, "some-flag"); {
+                // remember to end
+                flagship_end_flag(&ctx);
+            }
+
+            // finish this mode
+            flagship_end_mode(&ctx);
+        }
+
+        // parse flags
+        if(!flagship_parse(&ctx, argc, argv)) {
+            return 1;
+        }
+
+        // iterate through all parsed modes
+        int mode = 0;
+        while(flagship_mode_next(&ctx, &mode)) {
+            // iterate through flags, in order that they were passed in
+            struct FlagshipResult result = {0};
+            while(flagship_flag_next(&ctx, &result)) { // false if no more flags to read
+            }
+            // iterating through flags can be reset
+            flagship_flag_iterator_reset(&ctx);
+        }
+        // iterating through modes can be reset
+        flagship_mode_iterator_reset(&ctx);
+
+        // you can also just read flags directly
+        struct FlagshipResult result = {0};
+        if(flagship_read(&ctx, "mode", "flag", &result)) {
+            // do something with result
+        } // false means that flag doesn't exist in schema
+
+        // end frees all memory and resets the context
+        // only call this when you're done working with flags!
+        flagship_end(&ctx);
     }
-
-    // parse arguments
-    int last_arg = 0;
-    if( fls_parse( &ctx, argc, argv, &last_arg ) ) {
-        // read arguments
-        const char* string = fls_read_str( &ctx, "flag-string" );
-    }
-
-    // free context
-    fls_free( &ctx );
 
     return 0;
 }

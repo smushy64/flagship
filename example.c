@@ -13,6 +13,130 @@
 
 #include "flagship.h"
 
+int main(int argc, char** argv) {
+    // create context.
+    struct FlagshipContext ctx = {0};
+
+    // string token
+    FlagshipString flag_help = 0;
+
+    // define schema
+    flagship_begin(&ctx); {
+        // set program name
+        flagship_name(&ctx, argv[0]);
+
+        // define mode-less flag
+        flagship_begin_flag(&ctx, FLAGSHIP_TYPE_BOOL); {
+            // set name for this flag
+            // first call to this function will set the name used to look up this flag
+            //
+            // all format string functions return a 'token'
+            // this 'token' is an offset into the internal string buffer
+            // which can be used to refer to this string later
+            // or dereference into a const char * using flagship_deref()
+            flag_help = flagship_name(&ctx, "help");
+            // subsequent calls will attach aliases to this flag
+            flagship_name(&ctx, "h");
+            
+            // set the description for this flag
+            flagship_description(&ctx, "print this help message and exit.");
+
+            // add a note to this flag's description
+            // flagship_note(&ctx, "...");
+
+            // add a warning to this flag's description
+            // flagship_warning(&ctx, "...");
+
+            // set the default value of this flag
+            // flagship_default(&ctx, "false");
+
+            // if this flag is encountered, stop parsing subsequent flags
+            flagship_is_terminating(&ctx, true);
+
+            // any duplicates found of this flag are
+            // will overwrite previous instances
+            //
+            // by default, all flags are unique
+            flagship_is_unique(&ctx, true);
+
+            // finish defining this flag
+            flagship_end_flag(&ctx);
+        }
+
+        // define a mode
+        flagship_begin_mode(&ctx); {
+            // name this mode
+            flagship_name(&ctx, "build");
+            // modes can also have aliases
+            flagship_name(&ctx, "b");
+
+            // defining a name-less string flag
+            // each mode can only have one name-less string flag
+            flagship_begin_flag(&ctx, FLAGSHIP_TYPE_STRING); {
+                // set flag description
+                flagship_description(&ctx, "path to source file");
+
+                // stop defining this flag
+                flagship_end_flag(&ctx);
+            }
+
+            flagship_begin_flag(&ctx, FLAGSHIP_TYPE_BOOL); {
+                // copy a flag from another mode
+                // 0 for the 'mode' argument means this flag is mode-less
+                flagship_copy(&ctx, 0, flag_help);
+
+                flagship_end_flag(&ctx);
+            }
+
+            // end this mode
+            flagship_end_mode(&ctx);
+        }
+
+#if 0
+        // parse flags
+        // last argument is if help should be printed upon failure
+        if(!flagship_parse(&ctx, argc, argv, true)) {
+            // cleanup before exiting
+            flagship_end(&ctx);
+            // return some error
+            return 1;
+        }
+
+        // read flags by iterating through results
+        int mode = 0;
+        while(flagship_mode_iter_next(&ctx, &mode)) {
+            struct FlagshipResult result = {0};
+            while(flagship_flag_iter_next(&ctx, &result)) {
+                // do something with flag . . .
+            }
+            // flag iterator can be reset like so:
+            flagship_flag_iter_reset(&ctx);
+        }
+        // mode iterator can be reset like so:
+        flagship_mode_iter_reset(&ctx);
+
+        // you can also read flags directly via FlagshipStrings
+        struct FlagshipResult result = {0};
+        if(flagship_read(&ctx, &result, 0, 0)) {
+            // do something with result . . .
+        }
+
+        // or search via strings
+        result = (struct FlagshipResult){0};
+        if(flagship_search(&ctx, &result, "mode", "flag")) {
+            // do something with result . . .
+        }
+
+#endif
+        flagship_help_print(&ctx, NULL);
+
+        // cleanup everything
+        // do not call any other flagship functions after this
+        flagship_end(&ctx);
+    }
+}
+
+#if 0
 void make_flags( FShipContext* ctx, const char* program_name ) {
     fls_set_program_name( ctx, program_name );
     fls_set_description( ctx, "This is an example of Flagship." );
@@ -212,4 +336,5 @@ int main( int argc, char** argv ) {
     fls_free( &ctx );
     return 0;
 }
+#endif
 
