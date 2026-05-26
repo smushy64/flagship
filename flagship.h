@@ -94,6 +94,8 @@ struct FlagshipAllocator {
     FlagshipAllocatorFreeFn    *free;
     /// @brief Pointer to allocator context.
     void                       *ctx;
+    /// @brief Amount of memory allocated.
+    size_t                      sz;
 };
 
 /// @brief Flagship Context. Do not edit directly.
@@ -320,11 +322,11 @@ FlagshipString flagship_default_va(struct FlagshipContext *ctx, const char *fmt,
 FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 3)
 FlagshipString flagship_default(struct FlagshipContext *ctx, const char *fmt, ...);
 
-/// @brief Set if flag or mode is unique.
+/// @brief Set if flag or mode is repeatable.
 /// @param[in] ctx   Pointer to context.
-/// @param     value Whether flag is unique or not.
+/// @param     value Whether flag is repeatable or not.
 FLAGSHIP_INLINE
-void flagship_is_unique(struct FlagshipContext *ctx, bool value);
+void flagship_is_repeatable(struct FlagshipContext *ctx, bool value);
 
 /// @brief Set if flag or mode stops flag parsing.
 /// @param[in] ctx   Pointer to context.
@@ -403,12 +405,19 @@ FlagshipString flagship_enum_variant_va(struct FlagshipContext *ctx, const char 
 FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 3)
 FlagshipString flagship_enum_variant(struct FlagshipContext *ctx, const char *fmt, ...);
 
-/// @brief Copy flag to current flag.
+/// @brief Copy flag to current mode.
 /// @param[in] ctx  Pointer to context.
 /// @param     mode String token of mode name.
 /// @param     name String token of flag name.
 FLAGSHIP_INLINE
-void flagship_copy(struct FlagshipContext *ctx, FlagshipString mode, FlagshipString name);
+void flagship_copy_by_token(struct FlagshipContext *ctx, FlagshipString mode, FlagshipString name);
+
+/// @brief Copy flag to current mode.
+/// @param[in] ctx  Pointer to context.
+/// @param     mode Name of mode.
+/// @param     name Name of flag.
+FLAGSHIP_INLINE
+void flagship_copy(struct FlagshipContext *ctx, const char *mode, const char *name);
 
 /// @brief Clean up flagship context.
 /// @warning Do not call any flagship functions after this!
@@ -416,21 +425,30 @@ void flagship_copy(struct FlagshipContext *ctx, FlagshipString mode, FlagshipStr
 FLAGSHIP_INLINE
 void flagship_end(struct FlagshipContext *ctx);
 
+/// @brief Check if this schema is modal.
+/// @param[in] ctx Pointer to context.
+/// @return True if modal, false if not.
+FLAGSHIP_INLINE
+bool flagship_is_modal(struct FlagshipContext *ctx);
+
 /// @brief Stream generated help message.
-/// @param[in] ctx    Pointer to context.
-/// @param[in] mode   Mode to print help for.
-/// @param[in] stream (nullable) Streaming function.
-/// @param[in] target (nullable) Target to streaming function.
+/// @param[in] ctx         Pointer to context.
+/// @param     print_modes If true, modes will always be printed. Ignored if schema is not modal.
+/// @param[in] mode        Mode to print help for.
+/// @param[in] stream      (nullable) Streaming function.
+/// @param[in] target      (nullable) Target to streaming function.
 /// @return Number of bytes that could not be streamed.
 FLAGSHIP_INLINE
 size_t flagship_help_stream(
-    struct FlagshipContext *ctx, const char *mode, FlagshipStreamFn *stream, void *target);
+    struct FlagshipContext *ctx, const char *mode, bool print_modes,
+    FlagshipStreamFn *stream, void *target);
 
 /// @brief Print help message to stdout.
-/// @param[in] ctx  Pointer to context.
-/// @param[in] mode Name of mode to print help for.
+/// @param[in] ctx         Pointer to context.
+/// @param[in] mode        Name of mode to print help for.
+/// @param     print_modes If true, modes will always be printed. Ignored if schema is not modal.
 FLAGSHIP_INLINE
-void flagship_help_print(struct FlagshipContext *ctx, const char *mode);
+void flagship_help_print(struct FlagshipContext *ctx, const char *mode, bool print_modes);
 
 FLAGSHIP_INLINE
 bool flagship_parse_streaming_errors(
@@ -440,31 +458,35 @@ bool flagship_parse_streaming_errors(
 FLAGSHIP_INLINE
 bool flagship_parse(struct FlagshipContext *ctx, int argc, char** argv, bool print_help);
 
-FLAGSHIP_INLINE
-bool flagship_mode_iter_next(struct FlagshipContext *ctx, int *out_mode);
+// FLAGSHIP_INLINE
+// bool flagship_mode_iter_next(struct FlagshipContext *ctx, int *out_mode);
+//
+// FLAGSHIP_INLINE
+// void flagship_mode_iter_reset(struct FlagshipContext *ctx);
+//
+// FLAGSHIP_INLINE
+// bool flagship_flag_iter_next(struct FlagshipContext *ctx, struct FlagshipResult *out_result);
+//
+// FLAGSHIP_INLINE
+// void flagship_flag_iter_reset(struct FlagshipContext *ctx);
+//
+// FLAGSHIP_INLINE
+// bool flagship_read(
+//     struct FlagshipContext *ctx, struct FlagshipResult *out_result,
+//     FlagshipString mode, FlagshipString flag);
+//
+// FLAGSHIP_INLINE
+// bool flagship_search(
+//     struct FlagshipContext *ctx, struct FlagshipResult *out_result,
+//     const char *mode, const char *flag);
+//
+// FLAGSHIP_INLINE
+// int flagship_last_flag(struct FlagshipContext *ctx);
 
-FLAGSHIP_INLINE
-void flagship_mode_iter_reset(struct FlagshipContext *ctx);
-
-FLAGSHIP_INLINE
-bool flagship_flag_iter_next(struct FlagshipContext *ctx, struct FlagshipResult *out_result);
-
-FLAGSHIP_INLINE
-void flagship_flag_iter_reset(struct FlagshipContext *ctx);
-
-FLAGSHIP_INLINE
-bool flagship_read(
-    struct FlagshipContext *ctx, struct FlagshipResult *out_result,
-    FlagshipString mode, FlagshipString flag);
-
-FLAGSHIP_INLINE
-bool flagship_search(
-    struct FlagshipContext *ctx, struct FlagshipResult *out_result,
-    const char *mode, const char *flag);
-
-FLAGSHIP_INLINE
-int flagship_last_flag(struct FlagshipContext *ctx);
-
+/// @brief Dereference a string token.
+/// @param[in] ctx    Pointer to context.
+/// @param     string String token.
+/// @return String.
 FLAGSHIP_INLINE
 const char *flagship_deref(struct FlagshipContext *ctx, FlagshipString string);
 
@@ -472,7 +494,7 @@ const char *flagship_deref(struct FlagshipContext *ctx, FlagshipString string);
 /// @param t Flagship type.
 /// @return Read-only string or NULL if type is invalid.
 FLAGSHIP_INLINE
-const char* string_from_flagship_type(enum FlagshipType t);
+const char* flagship_string_from_type(enum FlagshipType t);
 /// @brief Convert string to Flagship type.
 /// @param[in]  str    String to convert to flagship type.
 /// @param[out] endptr (optional) Pointer to write pointer to end of valid string.
@@ -487,14 +509,40 @@ struct FlagshipEnumVariant {
     int            value;
 };
 
+struct __FlagshipBufferChar {
+    unsigned int cap;
+    unsigned int len;
+    char        *ptr;
+};
+
+struct __FlagshipBufferString {
+    unsigned int    cap;
+    unsigned int    len;
+    FlagshipString *ptr;
+};
+
+struct __FlagshipBufferFlag {
+    unsigned int         cap;
+    unsigned int         len;
+    struct FlagshipFlag *ptr;
+};
+
+struct __FlagshipBufferMode {
+    unsigned int         cap;
+    unsigned int         len;
+    struct FlagshipMode *ptr;
+};
+
+struct __FlagshipBufferEnumVariant {
+    unsigned int                cap;
+    unsigned int                len;
+    struct FlagshipEnumVariant *ptr;
+};
+
 struct FlagshipFlag {
     enum FlagshipType type;
 
-    struct {
-        unsigned int    cap;
-        unsigned int    len;
-        FlagshipString *ptr;
-    } names;
+    struct __FlagshipBufferString names;
 
     FlagshipString description, note, warning;
 
@@ -506,7 +554,7 @@ struct FlagshipFlag {
         FlagshipString t_string_default;
     };
 
-    bool is_unique      : 1;
+    bool is_repeatable  : 1;
     bool is_required    : 1;
     bool is_terminating : 1;
     bool has_default    : 1;
@@ -523,52 +571,30 @@ struct FlagshipFlag {
             float min, max;
         } s_float;
         struct {
-            unsigned int    cap;
-            unsigned int    len;
-            FlagshipString *ptr;
+            struct __FlagshipBufferString valid;
         } s_string;
         struct {
-            unsigned int                cap;
-            unsigned int                len;
-            struct FlagshipEnumVariant *ptr;
+            struct __FlagshipBufferEnumVariant variants;
             int counter;
         } s_enum;
     };
 };
 
 struct FlagshipMode {
-    struct {
-        unsigned int         cap;
-        unsigned int         len;
-        struct FlagshipFlag *ptr;
-    } flags;
-
-    struct {
-        unsigned int    cap;
-        unsigned int    len;
-        FlagshipString *ptr;
-    } names;
+    struct __FlagshipBufferFlag   flags;
+    struct __FlagshipBufferString names;
 
     FlagshipString description, note, warning;
 
-    bool is_unique      : 1;
+    bool is_repeatable  : 1;
     bool is_terminating : 1;
 };
 
 struct FlagshipContext {
     struct FlagshipAllocator allocator;
 
-    struct FlagshipStringBuffer {
-        unsigned int cap;
-        unsigned int len;
-        char        *ptr;
-    } tmp, str;
-
-    struct {
-        unsigned int         cap;
-        unsigned int         len;
-        struct FlagshipMode *ptr;
-    } modes;
+    struct __FlagshipBufferChar tmp, str;
+    struct __FlagshipBufferMode modes;
 
     FlagshipString name, description;
 
@@ -577,29 +603,18 @@ struct FlagshipContext {
     } current;
 };
 
-#define ALLOC(sz) \
-    ctx->allocator.alloc(sz, ctx->allocator.ctx)
-#define REALLOC(p, osz, nsz) \
-    __flagship_realloc_(&ctx->allocator, p, osz, nsz)
-#define FREE(p, sz) \
-    ctx->allocator.free(p, sz, ctx->allocator.ctx)
+#define flagship_reset_cbuf(cbuf) \
+    (cbuf)->len = 1
 
-#define RESERVE(b, min) do { \
-    if(((b)->cap - (b)->len) < (min)) { \
-        void *__new_ptr = \
-            REALLOC((b)->ptr, sizeof((b)->ptr[0]) * (b)->cap, \
-            sizeof((b)->ptr[0]) * (((b)->cap + ((min) - ((b)->cap - (b)->len))) + 16)); \
-        (b)->ptr = __new_ptr; \
-        (b)->cap = ((b)->cap + ((min) - ((b)->cap - (b)->len))) + 16; \
-    } \
-} while(0)
+void *__flagship_alloc(struct FlagshipAllocator *a, size_t sz) {
+    void *result = a->alloc(sz, a->ctx);
 
-#define ASSERT(condition, fmt, ...) do { \
-    if(!(condition)) { \
-        fprintf(stderr, "FLAGSHIP: condtion '" #condition "' failed! " fmt "\n" __VA_OPT__(,) __VA_ARGS__ ); \
-        assert(false); \
-    } \
-} while(0)
+    if(result) {
+        a->sz += sz;
+    }
+
+    return result;
+}
 
 void *__flagship_realloc_(struct FlagshipAllocator *a, void *p, size_t osz, size_t nsz) {
     if(a->realloc) {
@@ -613,17 +628,93 @@ void *__flagship_realloc_(struct FlagshipAllocator *a, void *p, size_t osz, size
     }
 }
 
+void *__flagship_realloc(
+    struct FlagshipAllocator *a, void *p, size_t oldsz, size_t newsz
+) {
+    void *result = NULL;
+    if(a->realloc) {
+        result = a->realloc(p, oldsz, newsz, a->ctx);
+    } else {
+        void *new_mem = a->alloc(newsz, a->ctx);
+        if(!new_mem) {
+            result = NULL;
+        }
+        result = memcpy(new_mem, p, oldsz);
+    }
+
+    if(result) {
+        a->sz += newsz - oldsz;
+    }
+
+    return result;
+}
+
+void __flagship_free(struct FlagshipAllocator *a, void *p, size_t sz) {
+    if(p && sz) {
+        a->free(p, sz, a->ctx);
+        a->sz -= sz;
+    }
+}
+
+#define flagship_alloc(a, sz) \
+    __flagship_alloc((a), (sz))
+
+#define flagship_realloc(a, p, oldsz, newsz) \
+    __flagship_realloc((a), (p), (oldsz), (newsz))
+
+#define flagship_free(a, p, sz) \
+    __flagship_free((a), (p), (sz))
+
+#define flagship_reserve(a, b, min) \
+    __flagship_reserve((a), sizeof((b)->ptr[0]), (b)->len, &(b)->cap, (void **)&(b)->ptr, (min))
+
+#define flagship_assert(condition, fmt, ...) do { \
+    if(!(condition)) { \
+        fprintf(stderr, "FLAGSHIP: condtion '" #condition "' failed! " fmt "\n" __VA_OPT__(,) __VA_ARGS__ ); \
+        assert(false); \
+    } \
+} while(0)
+
+void __flagship_reserve(
+    struct FlagshipAllocator *a,
+    size_t stride,
+    unsigned int len, unsigned int *out_cap, void **out_ptr,
+    unsigned int minimum
+) {
+    if(*out_ptr) {
+        if((*out_cap - len) < minimum) {
+            size_t oldsz = stride * *out_cap;
+
+            size_t delta = minimum - (*out_cap - len);
+            delta += 16 - (delta % 16);
+            delta += 16;
+
+            size_t newsz = stride * (*out_cap + delta);
+
+            *out_ptr = flagship_realloc(a, *out_ptr, oldsz, newsz);
+            *out_cap += delta;
+        }
+    } else {
+        size_t sz = minimum;
+        sz = sz < 16 ? 16 : sz;
+        sz = stride * sz;
+
+        *out_ptr = flagship_alloc(a, sz);
+        *out_cap = sz;
+    }
+}
+
 const char* __FLAGSHIP_TYPE_STRINGS[] = {
     "null",
     "bool",
-    "int",
+    "integer",
     "float",
     "string",
     "enum",
 };
 
 FLAGSHIP_INLINE
-const char* string_from_flagship_type(enum FlagshipType t) {
+const char* flagship_string_from_type(enum FlagshipType t) {
     if((t < 0) || (t > FLAGSHIP_TYPE_LAST)) {
         return NULL;
     }
@@ -664,76 +755,94 @@ void __flagship_default_free(void *ptr, size_t size, void *params) {
 }
 
 FLAGSHIP_INLINE
-FlagshipString __flagship_fmt_tmp_va(struct FlagshipContext *ctx, const char *fmt, va_list va) {
+FlagshipString __flagship_internal_format_string_va(
+    struct FlagshipAllocator *alloc, struct __FlagshipBufferChar *buffer,
+    unsigned int *opt_out_len, const char *fmt, va_list va
+) {
     va_list va2;
     va_copy(va2, va);
-
-    int required = vsnprintf(NULL, 0, fmt, va2);
-
+    unsigned int required_no_null = vsnprintf(NULL, 0, fmt, va2);
     va_end(va2);
 
-    RESERVE(&ctx->tmp, required + 1);
+    flagship_reserve(alloc, buffer, required_no_null + 1);
 
-    FlagshipString result = ctx->tmp.len;
+    FlagshipString offset = buffer->len;
 
-    vsnprintf(ctx->tmp.ptr + ctx->tmp.len, required + 1, fmt, va);
-    ctx->tmp.len += required + 1;
+    vsnprintf(buffer->ptr + buffer->len, required_no_null + 1, fmt, va);
+    buffer->len += required_no_null + 1;
 
-    return result;
+    if(opt_out_len) {
+        *opt_out_len = required_no_null;
+    }
+
+    return offset;
 }
-FLAGSHIP_INLINE
-FlagshipString __flagship_fmt_tmp(struct FlagshipContext *ctx, const char *fmt, ...) {
+
+FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(4, 5)
+FlagshipString __flagship_internal_format_string(
+    struct FlagshipAllocator *alloc, struct __FlagshipBufferChar *buffer,
+    unsigned int *opt_out_len, const char *fmt, ...
+) {
     va_list va;
     va_start(va, fmt);
-    FlagshipString result = __flagship_fmt_tmp_va(ctx, fmt, va);
+    FlagshipString result =
+        __flagship_internal_format_string_va(alloc, buffer, opt_out_len, fmt, va);
     va_end(va);
 
     return result;
 }
 
 FLAGSHIP_INLINE
-FlagshipString __flagship_fmt_va(struct FlagshipContext *ctx, const char *fmt, va_list va) {
-    va_list va2;
-    va_copy(va2, va);
-
-    int required = vsnprintf(NULL, 0, fmt, va2);
-
-    va_end(va2);
-
-    RESERVE(&ctx->str, required + 1);
-
-    FlagshipString result = ctx->str.len;
-
-    vsnprintf(ctx->str.ptr + ctx->str.len, required + 1, fmt, va);
-    ctx->str.len += required + 1;
-
-    return result;
+const char *__flagship_internal_format_string_deref_va(
+    struct FlagshipAllocator *alloc, struct __FlagshipBufferChar *buffer,
+    unsigned int *opt_out_len, const char *fmt, va_list va
+) {
+    FlagshipString offset =
+        __flagship_internal_format_string_va(alloc, buffer, opt_out_len, fmt, va);
+    return buffer->ptr + offset;
 }
+
 FLAGSHIP_INLINE
-FlagshipString __flagship_fmt(struct FlagshipContext *ctx, const char *fmt, ...) {
+const char *__flagship_internal_format_string_deref(
+    struct FlagshipAllocator *alloc, struct __FlagshipBufferChar *buffer,
+    unsigned int *opt_out_len, const char *fmt, ...
+) {
     va_list va;
     va_start(va, fmt);
-    FlagshipString result = __flagship_fmt_va(ctx, fmt, va);
+    const char *result =
+        __flagship_internal_format_string_deref_va(alloc, buffer, opt_out_len, fmt, va);
     va_end(va);
-
     return result;
 }
+
+#define flagship_fmt_va(a, b, l, f, va) \
+    __flagship_internal_format_string_va((a), (b), (l), f, va)
+
+#define flagship_fmt(a, b, l, f, ...) \
+    __flagship_internal_format_string((a), (b), (l), f __VA_OPT__(,) __VA_ARGS__ )
+
+#define flagship_fmt_deref_va(a, b, l, f, va) \
+    __flagship_internal_format_string_deref_va((a), (b), (l), f, va)
+
+#define flagship_fmt_deref(a, b, l, f, ...) \
+    __flagship_internal_format_string_deref((a), (b), (l), f __VA_OPT__(,) __VA_ARGS__ )
+
 FLAGSHIP_INLINE
 struct FlagshipMode *__flagship_get_current_mode(struct FlagshipContext *ctx) {
     if(ctx->current.mode < 0) {
         if(ctx->modes.len) {
             // search for 'null' mode
-            for(int i = 0; i < ctx->modes.len; ++i) {
+            for(unsigned int i = 0; i < ctx->modes.len; ++i) {
                 struct FlagshipMode *mode = ctx->modes.ptr + i;
                 if(!mode->names.len || !mode->names.ptr[0]) {
                     return mode;
                 }
             }
-            RESERVE(&ctx->modes, 1);
+            flagship_reserve(&ctx->allocator, &ctx->modes, 1);
 
             return ctx->modes.ptr + ctx->modes.len++;
         } else {
-            RESERVE(&ctx->modes, 1);
+            flagship_reserve(&ctx->allocator, &ctx->modes, 1);
 
             return ctx->modes.ptr + ctx->modes.len++;
         }
@@ -773,19 +882,20 @@ void flagship_begin_with_allocator(
         ctx->allocator.free    = __flagship_default_free;
     }
 
-    RESERVE(&ctx->tmp, 32);
     // first offset is null and should never be used.
-    RESERVE(&ctx->str, 33);
-    ctx->str.len = 1;
+    flagship_reserve(&ctx->allocator, &ctx->tmp, 32);
+    flagship_reserve(&ctx->allocator, &ctx->str, 32);
+    flagship_reset_cbuf(&ctx->str);
+    flagship_reset_cbuf(&ctx->tmp);
 
     ctx->current.mode = ctx->current.flag = -1;
 }
 
 FLAGSHIP_INLINE
 void flagship_begin_mode(struct FlagshipContext *ctx) {
-    ASSERT(ctx->current.mode < 0, "called begin mode again without matching end mode!");
+    flagship_assert(ctx->current.mode < 0, "called begin mode again without matching end mode!");
 
-    RESERVE(&ctx->modes, 1);
+    flagship_reserve(&ctx->allocator, &ctx->modes, 1);
     ctx->current.mode = ctx->modes.len++;
 
     memset(ctx->modes.ptr + ctx->current.mode, 0, sizeof(struct FlagshipMode));
@@ -795,12 +905,12 @@ FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 0)
 void flagship_begin_mode_existing_search_va(
     struct FlagshipContext *ctx, const char *fmt, va_list va
 ) {
-    ASSERT(ctx->current.mode < 0, "called begin mode again without matching end mode!");
+    flagship_assert(ctx->current.mode < 0, "called begin mode again without matching end mode!");
 
-    ctx->tmp.len = 0;
+    flagship_reset_cbuf(&ctx->tmp);
     const char *search_string = NULL;
     if(fmt) {
-        search_string = ctx->tmp.ptr + __flagship_fmt_tmp_va(ctx, fmt, va);
+        search_string = flagship_fmt_deref_va(&ctx->allocator, &ctx->tmp, NULL, fmt, va);
     }
 
     for(unsigned int i = 0; i < ctx->modes.len; ++i) {
@@ -823,7 +933,7 @@ void flagship_begin_mode_existing_search_va(
         }
     }
 
-    ASSERT(false, "failed to find mode '%s'!", search_string);
+    flagship_assert(false, "failed to find mode '%s'!", search_string);
 }
 
 FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 3)
@@ -836,7 +946,7 @@ void flagship_begin_mode_existing_search(struct FlagshipContext *ctx, const char
 
 FLAGSHIP_INLINE
 void flagship_begin_mode_existing(struct FlagshipContext *ctx, FlagshipString name) {
-    ASSERT(ctx->current.mode < 0, "called begin mode again without matching end mode!");
+    flagship_assert(ctx->current.mode < 0, "called begin mode again without matching end mode!");
 
     for(unsigned int i = 0; i < ctx->modes.len; ++i) {
         struct FlagshipMode *mode = ctx->modes.ptr + i;
@@ -854,21 +964,21 @@ void flagship_begin_mode_existing(struct FlagshipContext *ctx, FlagshipString na
         }
     }
 
-    ASSERT(false, "failed to find mode %d!\n", name);
+    flagship_assert(false, "failed to find mode %d!\n", name);
 }
 
 FLAGSHIP_INLINE
 void flagship_end_mode(struct FlagshipContext *ctx) {
-    ASSERT(ctx->current.mode >= 0, "called end mode without matching begin mode!");
+    flagship_assert(ctx->current.mode >= 0, "called end mode without matching begin mode!");
     ctx->current.mode = -1;
 }
 
 FLAGSHIP_INLINE
 void flagship_begin_flag(struct FlagshipContext *ctx, enum FlagshipType type) {
-    ASSERT(ctx->current.flag < 0, "called begin flag without matching end flag!");
+    flagship_assert(ctx->current.flag < 0, "called begin flag without matching end flag!");
     struct FlagshipMode *mode = __flagship_get_current_mode(ctx);
 
-    RESERVE(&mode->flags, 1);
+    flagship_reserve(&ctx->allocator, &mode->flags, 1);
     ctx->current.flag = mode->flags.len++;
 
     memset(mode->flags.ptr + ctx->current.flag, 0, sizeof(struct FlagshipFlag));
@@ -880,12 +990,12 @@ FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 0)
 void flagship_begin_flag_existing_search_va(
     struct FlagshipContext *ctx, const char *fmt, va_list va
 ) {
-    ASSERT(ctx->current.flag < 0, "called begin flag without matching end flag!");
+    flagship_assert(ctx->current.flag < 0, "called begin flag without matching end flag!");
 
-    ctx->tmp.len = 0;
+    flagship_reset_cbuf(&ctx->tmp);
     const char *search_string = NULL;
     if(fmt) {
-        search_string = ctx->tmp.ptr + __flagship_fmt_tmp_va(ctx, fmt, va);
+        search_string = flagship_fmt_deref_va(&ctx->allocator, &ctx->tmp, NULL, fmt, va);
     }
 
     struct FlagshipMode *mode = __flagship_get_current_mode(ctx);
@@ -910,7 +1020,7 @@ void flagship_begin_flag_existing_search_va(
         }
     }
 
-    ASSERT(false, "failed to find flag '%s'!\n", search_string);
+    flagship_assert(false, "failed to find flag '%s'!\n", search_string);
 
 }
 
@@ -924,7 +1034,7 @@ void flagship_begin_flag_existing_search(struct FlagshipContext *ctx, const char
 
 FLAGSHIP_INLINE
 void flagship_begin_flag_existing(struct FlagshipContext *ctx, FlagshipString name) {
-    ASSERT(ctx->current.flag < 0, "called begin flag without matching end flag!");
+    flagship_assert(ctx->current.flag < 0, "called begin flag without matching end flag!");
 
     struct FlagshipMode *mode = __flagship_get_current_mode(ctx);
 
@@ -944,19 +1054,19 @@ void flagship_begin_flag_existing(struct FlagshipContext *ctx, FlagshipString na
         }
     }
 
-    ASSERT(false, "failed to find flag %d!\n", name);
+    flagship_assert(false, "failed to find flag %d!\n", name);
 
 }
 
 FLAGSHIP_INLINE
 void flagship_end_flag(struct FlagshipContext *ctx) {
-    ASSERT(ctx->current.flag >= 0, "called end flag without matching begin flag!");
+    flagship_assert(ctx->current.flag >= 0, "called end flag without matching begin flag!");
     ctx->current.flag = -1;
 }
 
 FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 0)
 FlagshipString flagship_name_va(struct FlagshipContext *ctx, const char *fmt, va_list va) {
-    FlagshipString fstr = __flagship_fmt_va(ctx, fmt, va);
+    FlagshipString fstr = fmt ? flagship_fmt_va(&ctx->allocator, &ctx->str, NULL, fmt, va) : 0;
 
     if(ctx->current.mode >= 0) {
         struct FlagshipMode *mode = __flagship_get_current_mode(ctx);
@@ -964,10 +1074,10 @@ FlagshipString flagship_name_va(struct FlagshipContext *ctx, const char *fmt, va
         if(ctx->current.flag >= 0) {
             struct FlagshipFlag *flag = mode->flags.ptr + ctx->current.flag;
 
-            RESERVE(&flag->names, 1);
+            flagship_reserve(&ctx->allocator, &flag->names, 1);
             flag->names.ptr[flag->names.len++] = fstr;
         } else {
-            RESERVE(&mode->names, 1);
+            flagship_reserve(&ctx->allocator, &mode->names, 1);
             mode->names.ptr[mode->names.len++] = fstr;
         }
     } else {
@@ -975,7 +1085,7 @@ FlagshipString flagship_name_va(struct FlagshipContext *ctx, const char *fmt, va
             struct FlagshipMode *mode = __flagship_get_current_mode(ctx);
             struct FlagshipFlag *flag = mode->flags.ptr + ctx->current.flag;
 
-            RESERVE(&flag->names, 1);
+            flagship_reserve(&ctx->allocator, &flag->names, 1);
             flag->names.ptr[flag->names.len++] = fstr;
         } else {
             ctx->name = fstr;
@@ -996,7 +1106,7 @@ FlagshipString flagship_name(struct FlagshipContext *ctx, const char *fmt, ...) 
 
 FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 0)
 FlagshipString flagship_description_va(struct FlagshipContext *ctx, const char *fmt, va_list va) {
-    FlagshipString fstr = __flagship_fmt_va(ctx, fmt, va);
+    FlagshipString fstr = flagship_fmt_va(&ctx->allocator, &ctx->str, NULL, fmt, va);
 
     if(ctx->current.mode >= 0) {
         struct FlagshipMode *mode = __flagship_get_current_mode(ctx);
@@ -1037,19 +1147,22 @@ FlagshipString flagship_note_va(struct FlagshipContext *ctx, const char *fmt, va
     if(ctx->current.mode >= 0) {
         struct FlagshipMode *mode = __flagship_get_current_mode(ctx);
 
+        result = flagship_fmt_va(&ctx->allocator, &ctx->str, NULL, fmt, va);
         if(ctx->current.flag >= 0) {
             struct FlagshipFlag *flag = mode->flags.ptr + ctx->current.flag;
 
-            result = flag->note = __flagship_fmt_va(ctx, fmt, va);
+            flag->note = result;
+        } else {
+            mode->note = result;
         }
     } else {
         if(ctx->current.flag >= 0) {
             struct FlagshipMode *mode = __flagship_get_current_mode(ctx);
             struct FlagshipFlag *flag = mode->flags.ptr + ctx->current.flag;
 
-            result = flag->note = __flagship_fmt_va(ctx, fmt, va);
+            result = flag->note = flagship_fmt_va(&ctx->allocator, &ctx->str, NULL, fmt, va);
         } else {
-            ASSERT(false, "notes cannot be attached to context!");
+            flagship_assert(false, "notes cannot be attached to context!");
         }
     }
 
@@ -1071,19 +1184,22 @@ FlagshipString flagship_warning_va(struct FlagshipContext *ctx, const char *fmt,
     if(ctx->current.mode >= 0) {
         struct FlagshipMode *mode = __flagship_get_current_mode(ctx);
 
+        result = flagship_fmt_va(&ctx->allocator, &ctx->str, NULL, fmt, va);
         if(ctx->current.flag >= 0) {
             struct FlagshipFlag *flag = mode->flags.ptr + ctx->current.flag;
 
-            result = flag->warning = __flagship_fmt_va(ctx, fmt, va);
+            flag->warning = result;
+        } else {
+            mode->warning = result;
         }
     } else {
         if(ctx->current.flag >= 0) {
             struct FlagshipMode *mode = __flagship_get_current_mode(ctx);
             struct FlagshipFlag *flag = mode->flags.ptr + ctx->current.flag;
 
-            result = flag->warning = __flagship_fmt_va(ctx, fmt, va);
+            result = flag->warning = flagship_fmt_va(&ctx->allocator, &ctx->str, NULL, fmt, va);
         } else {
-            ASSERT(false, "warnings cannot be attached to context!");
+            flagship_assert(false, "warnings cannot be attached to context!");
         }
     }
 
@@ -1210,10 +1326,10 @@ bool __flagship_parse_string(
     struct FlagshipContext *ctx, struct FlagshipFlag *flag,
     const char *str, const char **out_value
 ) {
-    if(flag->s_string.len) {
+    if(flag->s_string.valid.len) {
         bool success = false;
-        for(unsigned int i = 0; i < flag->s_string.len; ++i) {
-            const char *comp = flagship_deref(ctx, flag->s_string.ptr[i]);
+        for(unsigned int i = 0; i < flag->s_string.valid.len; ++i) {
+            const char *comp = flagship_deref(ctx, flag->s_string.valid.ptr[i]);
 
             if(strcmp(str, comp) == 0) {
                 success = true;
@@ -1235,15 +1351,15 @@ bool __flagship_parse_enum(
     struct FlagshipContext *ctx, struct FlagshipFlag *flag,
     const char *str, int *out_value
 ) {
-    ASSERT(flag->s_enum.len, "enum must be well defined before it's used!");
+    flagship_assert(flag->s_enum.variants.len, "enum must be well defined before it's used!");
     char *endptr = NULL;
     long value   = strtol(str, &endptr, 10);
 
     bool success = false;
 
     if(endptr && (endptr == (str + strlen(str)))) {
-        for(unsigned int i = 0; i < flag->s_enum.len; ++i) {
-            struct FlagshipEnumVariant *variant = flag->s_enum.ptr + i;
+        for(unsigned int i = 0; i < flag->s_enum.variants.len; ++i) {
+            struct FlagshipEnumVariant *variant = flag->s_enum.variants.ptr + i;
 
             if(variant->value == value) {
                 success = true;
@@ -1251,8 +1367,8 @@ bool __flagship_parse_enum(
             }
         }
     } else {
-        for(unsigned int i = 0; i < flag->s_enum.len; ++i) {
-            struct FlagshipEnumVariant *variant = flag->s_enum.ptr + i;
+        for(unsigned int i = 0; i < flag->s_enum.variants.len; ++i) {
+            struct FlagshipEnumVariant *variant = flag->s_enum.variants.ptr + i;
 
             const char *variant_name = flagship_deref(ctx, variant->name);
 
@@ -1273,14 +1389,12 @@ bool __flagship_parse_enum(
 
 FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 0)
 FlagshipString flagship_default_va(struct FlagshipContext *ctx, const char *fmt, va_list va) {
-    ASSERT(ctx->current.flag >= 0, "cannot set default value for mode or context!");
+    flagship_assert(ctx->current.flag >= 0, "cannot set default value for mode or context!");
 
     struct FlagshipFlag *flag = __flagship_get_current_flag(ctx);
 
-    ctx->tmp.len = 0;
-    const char *default_value = ctx->tmp.ptr + __flagship_fmt_tmp_va(ctx, fmt, va);
-
-    FlagshipString result = 0;
+    flagship_reset_cbuf(&ctx->tmp);
+    const char *default_value = flagship_fmt_deref_va(&ctx->allocator, &ctx->tmp, NULL, fmt, va);
 
     // parse value
     switch(flag->type) {
@@ -1288,7 +1402,7 @@ FlagshipString flagship_default_va(struct FlagshipContext *ctx, const char *fmt,
             break;
         case FLAGSHIP_TYPE_BOOL    : {
             bool value = false;
-            ASSERT(
+            flagship_assert(
                 __flagship_parse_bool(flag, default_value, &value),
                 "failed to parse default value!");
 
@@ -1297,7 +1411,7 @@ FlagshipString flagship_default_va(struct FlagshipContext *ctx, const char *fmt,
         } break;
         case FLAGSHIP_TYPE_INTEGER : {
             int value = 0;
-            ASSERT(
+            flagship_assert(
                 __flagship_parse_integer(flag, default_value, &value),
                 "failed to parse default value!");
 
@@ -1306,7 +1420,7 @@ FlagshipString flagship_default_va(struct FlagshipContext *ctx, const char *fmt,
         } break; 
         case FLAGSHIP_TYPE_FLOAT   : {
             float value = 0.0f;
-            ASSERT(
+            flagship_assert(
                 __flagship_parse_float(flag, default_value, &value),
                 "failed to parse default value!");
 
@@ -1315,16 +1429,16 @@ FlagshipString flagship_default_va(struct FlagshipContext *ctx, const char *fmt,
         } break;
         case FLAGSHIP_TYPE_STRING  : {
             const char *value = "";
-            ASSERT(
+            flagship_assert(
                 __flagship_parse_string(ctx, flag, default_value, &value),
                 "failed to parse default value!");
 
             flag->has_default      = true;
-            flag->t_string_default = __flagship_fmt(ctx, "%s", value);
+            flag->t_string_default = flagship_fmt(&ctx->allocator, &ctx->str, NULL, "%s", value);
         } break;
         case FLAGSHIP_TYPE_ENUM    : {
             int value = 0;
-            ASSERT(
+            flagship_assert(
                 __flagship_parse_enum(ctx, flag, default_value, &value),
                 "failed to parse default value!");
 
@@ -1333,7 +1447,7 @@ FlagshipString flagship_default_va(struct FlagshipContext *ctx, const char *fmt,
         } break;
     }
 
-    return __flagship_fmt(ctx, "%s", default_value);
+    return flagship_fmt(&ctx->allocator, &ctx->str, NULL, "%s", default_value);
 }
 
 FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 3)
@@ -1346,14 +1460,14 @@ FlagshipString flagship_default(struct FlagshipContext *ctx, const char *fmt, ..
 }
 
 FLAGSHIP_INLINE
-void flagship_is_unique(struct FlagshipContext *ctx, bool value) {
+void flagship_is_repeatable(struct FlagshipContext *ctx, bool value) {
     struct FlagshipMode *mode = __flagship_get_current_mode(ctx);
     if(ctx->current.flag >= 0) {
         struct FlagshipFlag *flag = mode->flags.ptr + ctx->current.flag;
 
-        flag->is_unique = value;
+        flag->is_repeatable = value;
     } else {
-        mode->is_unique = value;
+        mode->is_repeatable = value;
     }
 }
 
@@ -1371,7 +1485,7 @@ void flagship_is_terminating(struct FlagshipContext *ctx, bool value) {
 
 FLAGSHIP_INLINE
 void flagship_is_required(struct FlagshipContext *ctx, bool value) {
-    ASSERT(ctx->current.flag >= 0, "attempted to set is_required for mode!");
+    flagship_assert(ctx->current.flag >= 0, "attempted to set is_required for mode!");
 
     struct FlagshipFlag *flag = __flagship_get_current_flag(ctx);
     flag->is_required = value;
@@ -1379,34 +1493,36 @@ void flagship_is_required(struct FlagshipContext *ctx, bool value) {
 
 FLAGSHIP_INLINE
 void flagship_bool_is_flipped(struct FlagshipContext *ctx, bool value) {
-    ASSERT(ctx->current.flag >= 0, "attempted to set bool_is_flipped for mode!");
+    flagship_assert(ctx->current.flag >= 0, "attempted to set bool_is_flipped for mode!");
 
     struct FlagshipFlag *flag = __flagship_get_current_flag(ctx);
 
-    ASSERT(flag->type == FLAGSHIP_TYPE_BOOL, "attempted to set bool option on non-bool flag!");
+    flagship_assert(
+        flag->type == FLAGSHIP_TYPE_BOOL, "attempted to set bool option on non-bool flag!");
 
     flag->s_bool.is_flipped = value;
 }
 
 FLAGSHIP_INLINE
 void flagship_bool_is_toggle(struct FlagshipContext *ctx, bool value) {
-    ASSERT(ctx->current.flag >= 0, "attempted to set bool_is_toggle for mode!");
+    flagship_assert(ctx->current.flag >= 0, "attempted to set bool_is_toggle for mode!");
 
     struct FlagshipFlag *flag = __flagship_get_current_flag(ctx);
 
-    ASSERT(flag->type == FLAGSHIP_TYPE_BOOL, "attempted to set bool option on non-bool flag!");
+    flagship_assert(
+        flag->type == FLAGSHIP_TYPE_BOOL, "attempted to set bool option on non-bool flag!");
 
     flag->s_bool.is_toggle = value;
 }
 
 FLAGSHIP_INLINE
 void flagship_integer_range(struct FlagshipContext *ctx, int min_inclusive, int max_exclusive) {
-    ASSERT(max_exclusive >= min_inclusive, "invalid range!");
-    ASSERT(ctx->current.flag >= 0, "attempted to set integer_range for mode!");
+    flagship_assert(max_exclusive >= min_inclusive, "invalid range!");
+    flagship_assert(ctx->current.flag >= 0, "attempted to set integer_range for mode!");
 
     struct FlagshipFlag *flag = __flagship_get_current_flag(ctx);
 
-    ASSERT(flag->type == FLAGSHIP_TYPE_INTEGER,
+    flagship_assert(flag->type == FLAGSHIP_TYPE_INTEGER,
         "attempted to set integer option on non-integer flag!");
 
     flag->s_integer.min = min_inclusive;
@@ -1415,12 +1531,12 @@ void flagship_integer_range(struct FlagshipContext *ctx, int min_inclusive, int 
 
 FLAGSHIP_INLINE
 void flagship_float_range(struct FlagshipContext *ctx, float min_inclusive, float max_exclusive) {
-    ASSERT(max_exclusive >= min_inclusive, "invalid range!");
-    ASSERT(ctx->current.flag >= 0, "attempted to set float_range for mode!");
+    flagship_assert(max_exclusive >= min_inclusive, "invalid range!");
+    flagship_assert(ctx->current.flag >= 0, "attempted to set float_range for mode!");
 
     struct FlagshipFlag *flag = __flagship_get_current_flag(ctx);
 
-    ASSERT(flag->type == FLAGSHIP_TYPE_FLOAT,
+    flagship_assert(flag->type == FLAGSHIP_TYPE_FLOAT,
         "attempted to set float option on non-float flag!");
 
     flag->s_float.min = min_inclusive;
@@ -1429,18 +1545,18 @@ void flagship_float_range(struct FlagshipContext *ctx, float min_inclusive, floa
 
 FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 0)
 FlagshipString flagship_string_valid_va(struct FlagshipContext *ctx, const char *fmt, va_list va) {
-    ASSERT(ctx->current.flag >= 0, "attempted to set string_valid for mode!");
+    flagship_assert(ctx->current.flag >= 0, "attempted to set string_valid for mode!");
 
     struct FlagshipFlag *flag = __flagship_get_current_flag(ctx);
 
-    ASSERT(flag->type == FLAGSHIP_TYPE_STRING,
+    flagship_assert(flag->type == FLAGSHIP_TYPE_STRING,
         "attempted to set string option on non-string flag!");
 
-    RESERVE(&flag->s_string, 1);
+    flagship_reserve(&ctx->allocator, &flag->s_string.valid, 1);
 
     FlagshipString result =
-        flag->s_string.ptr[flag->s_string.len++] =
-        __flagship_fmt_va(ctx, fmt, va);
+        flag->s_string.valid.ptr[flag->s_string.valid.len++] =
+        flagship_fmt_va(&ctx->allocator, &ctx->str, NULL, fmt, va);
 
     return result;
 }
@@ -1456,11 +1572,11 @@ FlagshipString flagship_string_valid(struct FlagshipContext *ctx, const char *fm
 
 FLAGSHIP_INLINE
 void flagship_enum_variant_start(struct FlagshipContext *ctx, int start) {
-    ASSERT(ctx->current.flag >= 0, "attempted to set enum_variant_start for mode!");
+    flagship_assert(ctx->current.flag >= 0, "attempted to set enum_variant_start for mode!");
 
     struct FlagshipFlag *flag = __flagship_get_current_flag(ctx);
 
-    ASSERT(flag->type == FLAGSHIP_TYPE_ENUM,
+    flagship_assert(flag->type == FLAGSHIP_TYPE_ENUM,
         "attempted to set enum option on non-enum flag!");
 
     flag->s_enum.counter = start;
@@ -1468,20 +1584,20 @@ void flagship_enum_variant_start(struct FlagshipContext *ctx, int start) {
 
 FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 0)
 FlagshipString flagship_enum_variant_va(struct FlagshipContext *ctx, const char *fmt, va_list va) {
-    ASSERT(ctx->current.flag >= 0, "attempted to set enum_variant for mode!");
+    flagship_assert(ctx->current.flag >= 0, "attempted to set enum_variant for mode!");
 
     struct FlagshipFlag *flag = __flagship_get_current_flag(ctx);
 
-    ASSERT(flag->type == FLAGSHIP_TYPE_ENUM,
+    flagship_assert(flag->type == FLAGSHIP_TYPE_ENUM,
         "attempted to set enum option on non-enum flag!");
 
-    RESERVE(&flag->s_enum, 1);
+    flagship_reserve(&ctx->allocator, &flag->s_enum.variants, 1);
 
     struct FlagshipEnumVariant variant = {0};
-    variant.name  = __flagship_fmt_va(ctx, fmt, va);
+    variant.name  = flagship_fmt_va(&ctx->allocator, &ctx->str, NULL, fmt, va);
     variant.value = flag->s_enum.counter++;
 
-    flag->s_enum.ptr[flag->s_enum.len++] = variant;
+    flag->s_enum.variants.ptr[flag->s_enum.variants.len++] = variant;
 
     return variant.name;
 }
@@ -1496,105 +1612,188 @@ FlagshipString flagship_enum_variant(struct FlagshipContext *ctx, const char *fm
 }
 
 FLAGSHIP_INLINE
-void flagship_copy(struct FlagshipContext *ctx, FlagshipString mode_name, FlagshipString flag_name) {
-    ASSERT(ctx->current.flag >= 0, "attempted to copy flag outside flag!");
+void __flagship_copy(struct FlagshipContext *ctx, struct FlagshipFlag *src) {
+    flagship_begin_flag(ctx, src->type);
 
-    struct FlagshipFlag *flag = __flagship_get_current_flag(ctx);
+    struct FlagshipFlag *dst = __flagship_get_current_flag(ctx);
 
-    bool did_copy = false;
+    flagship_reserve(&ctx->allocator, &dst->names, src->names.len);
+    memcpy(dst->names.ptr, src->names.ptr, sizeof(src->names.ptr[0]) * src->names.len);
+    dst->names.len = src->names.len;
+
+    dst->description = src->description;
+    dst->note        = src->note;
+    dst->warning     = src->warning;
+
+    dst->is_repeatable  = src->is_repeatable;
+    dst->is_required    = src->is_required;
+    dst->is_terminating = src->is_terminating;
+    dst->has_default    = src->has_default;
+
+    switch(src->type) {
+        case FLAGSHIP_TYPE_NULL: break;
+        case FLAGSHIP_TYPE_BOOL: {
+            dst->s_bool = src->s_bool;
+            if(src->has_default) {
+                dst->t_bool_default = src->t_bool_default;
+            }
+        } break;
+        case FLAGSHIP_TYPE_INTEGER: {
+            dst->s_integer = src->s_integer;
+            if(src->has_default) {
+                dst->t_integer_default = src->t_integer_default;
+            }
+        } break;
+        case FLAGSHIP_TYPE_FLOAT: {
+            dst->s_float = src->s_float;
+            if(src->has_default) {
+                dst->t_float_default = src->t_float_default;
+            }
+        } break;
+        case FLAGSHIP_TYPE_STRING:{
+            if(src->s_string.valid.len) {
+                flagship_reserve(&ctx->allocator, &dst->s_string.valid, src->s_string.valid.len);
+                memcpy(
+                    dst->s_string.valid.ptr,
+                    src->s_string.valid.ptr,
+                    sizeof(src->s_string.valid.ptr[0]) * src->s_string.valid.len);
+                dst->s_string.valid.len = src->s_string.valid.len;
+            }
+            dst->t_string_default = src->t_string_default;
+        } break;
+        case FLAGSHIP_TYPE_ENUM: {
+            dst->s_enum.counter = src->s_enum.counter;
+            if(src->s_enum.variants.len) {
+                flagship_reserve(&ctx->allocator, &dst->s_enum.variants, src->s_enum.variants.len);
+                memcpy(
+                    dst->s_enum.variants.ptr,
+                    src->s_enum.variants.ptr,
+                    sizeof(src->s_enum.variants.ptr[0]) * src->s_enum.variants.len);
+                dst->s_enum.variants.len = src->s_enum.variants.len;
+            }
+            dst->t_enum_default = src->t_enum_default;
+        } break;
+    }
+
+    flagship_end_flag(ctx);
+}
+
+FLAGSHIP_INLINE
+void flagship_copy_by_token(
+    struct FlagshipContext *ctx, FlagshipString fstr_mode, FlagshipString fstr_name
+) {
     for(unsigned int i = 0; i < ctx->modes.len; ++i) {
-        struct FlagshipMode *current_mode = ctx->modes.ptr + i;
+        struct FlagshipMode *mode = ctx->modes.ptr + i;
 
-        bool found_mode = false;
-        if(mode_name) {
-            const char *mode_name_str = ctx->str.ptr + mode_name;
-            if(current_mode->names.len) {
-                const char *current_mode_name_str = ctx->str.ptr + current_mode->names.ptr[0];
-
-                if(strcmp(mode_name_str, current_mode_name_str) == 0) {
-                    found_mode = true;
-                }
-            }
-        } else {
-            if(!current_mode->names.len || !current_mode->names.ptr[0]) {
-                found_mode = true;
-            }
-        }
-
-        if(!found_mode) {
-            continue;
-        }
-
-        for(unsigned int j = 0; j < current_mode->flags.len; ++j) {
-            struct FlagshipFlag *current_flag = current_mode    ->flags.ptr + j;
-
-            bool found_flag = false;
-            if(flag_name) {
-                const char *flag_name_str = ctx->str.ptr + flag_name;
-                if(current_flag->names.len) {
-                    const char *current_flag_name_str = ctx->str.ptr + current_flag->names.ptr[0];
-
-                    if(strcmp(flag_name_str, current_flag_name_str) == 0) {
-                        found_flag = true;
-                    }
-                }
-            } else {
-                if(!current_flag->names.len || !current_flag->names.ptr[0]) {
-                    found_flag = true;
-                }
-            }
-
-            if(!found_flag) {
+        bool mode_found = false;
+        if(fstr_mode) {
+            if(!mode->names.ptr) {
                 continue;
             }
 
-            did_copy = true;
-
-            // NOTE(alicia): this has to be a deep copy to avoid double free later.
-            // should probably avoid deep copy and only do a deep copy if this flag's
-            // buffers need to be modified but... deep copy is easier
-            *flag = *current_flag;
-
-            memset(&flag->names, 0, (sizeof(int) * 2) + sizeof(void*));
-
-            RESERVE(&flag->names, current_flag->names.len);
-            for(unsigned int k = 0; k < current_flag->names.len; ++k) {
-                flag->names.ptr[flag->names.len++] = current_flag->names.ptr[k];
+            if(mode->names.ptr[0] == fstr_mode) {
+                mode_found = true;
             }
-
-            switch(flag->type) {
-                case FLAGSHIP_TYPE_STRING: {
-                    if(current_flag->s_string.ptr) {
-                        memset(&flag->s_string, 0, (sizeof(int) * 2) + sizeof(void*));
-
-                        RESERVE(&flag->s_string, current_flag->s_string.len);
-                        for(unsigned int k = 0; k < current_flag->s_string.len; ++k) {
-                            flag->s_string.ptr[flag->s_string.len++] =
-                                current_flag->s_string.ptr[k];
-                        }
-                    }
-                } break;
-                case FLAGSHIP_TYPE_ENUM: {
-                    if(current_flag->s_enum.ptr) {
-                        memset(&flag->s_enum, 0, (sizeof(int) * 2) + sizeof(void*));
-
-                        RESERVE(&flag->s_enum, current_flag->s_enum.len);
-                        for(unsigned int k = 0; k < current_flag->s_enum.len; ++k) {
-                            flag->s_enum.ptr[flag->s_enum.len++] =
-                                current_flag->s_enum.ptr[k];
-                        }
-                    }
-                } break;
-                case FLAGSHIP_TYPE_NULL:
-                case FLAGSHIP_TYPE_BOOL:
-                case FLAGSHIP_TYPE_INTEGER:
-                case FLAGSHIP_TYPE_FLOAT:
-                  break;
+        } else {
+            if(!mode->names.ptr || !mode->names.ptr[0]) {
+                mode_found = true;
             }
         }
+
+        if(!mode_found) {
+            continue;
+        }
+
+        for(unsigned int j = 0; j < mode->flags.len; ++j) {
+            struct FlagshipFlag *flag = mode->flags.ptr + j;
+
+            bool flag_found = false;
+            if(fstr_name) {
+                if(!flag->names.ptr) {
+                    continue;
+                }
+
+                if(flag->names.ptr[0] == fstr_name) {
+                    flag_found = true;
+                }
+            } else {
+                if(!flag->names.ptr || !flag->names.ptr[0]) {
+                    flag_found = true;
+                }
+            }
+
+            if(!flag_found) {
+                continue;
+            }
+
+            __flagship_copy(ctx, flag);
+            return;
+        }
+
+        break;
     }
 
-    ASSERT(did_copy, "failed to find flag to copy!");
+    flagship_assert(false, "failed to find flag by tokens %d and %d!", fstr_mode, fstr_name);
+}
+
+FLAGSHIP_INLINE
+void flagship_copy(
+    struct FlagshipContext *ctx, const char *str_mode, const char *str_name
+) {
+    for(unsigned int i = 0; i < ctx->modes.len; ++i) {
+        struct FlagshipMode *mode = ctx->modes.ptr + i;
+
+        bool mode_found = false;
+        if(str_mode) {
+            if(!mode->names.ptr) {
+                continue;
+            }
+
+            const char *this_name = flagship_deref(ctx, mode->names.ptr[0]);
+            if(strcmp(this_name, str_mode) == 0) {
+                mode_found = true;
+            }
+        } else {
+            if(!mode->names.ptr || !mode->names.ptr[0]) {
+                mode_found = true;
+            }
+        }
+
+        if(!mode_found) {
+            continue;
+        }
+
+        for(unsigned int j = 0; j < mode->flags.len; ++j) {
+            struct FlagshipFlag *flag = mode->flags.ptr + j;
+
+            bool flag_found = false;
+            if(str_name) {
+                if(!flag->names.ptr) {
+                    continue;
+                }
+
+                const char *this_name = flagship_deref(ctx, flag->names.ptr[0]);
+                if(strcmp(this_name, str_name) == 0) {
+                    flag_found = true;
+                }
+            } else {
+                if(!flag->names.ptr || !flag->names.ptr[0]) {
+                    flag_found = true;
+                }
+            }
+
+            if(!flag_found) {
+                continue;
+            }
+
+            __flagship_copy(ctx, flag);
+            return;
+        }
+
+        break;
+    }
+
+    flagship_assert(false, "failed to find flag by names %s and %s!", str_mode, str_name);
 }
 
 FLAGSHIP_INLINE
@@ -1629,18 +1828,18 @@ void flagship_end(struct FlagshipContext *ctx) {
 
                     switch(flag->type) {
                         case FLAGSHIP_TYPE_STRING: {
-                            if(flag->s_string.ptr) {
+                            if(flag->s_string.valid.ptr) {
                                 ctx->allocator.free(
-                                    flag->s_string.ptr,
-                                    sizeof(FlagshipString) * flag->s_string.cap,
+                                    flag->s_string.valid.ptr,
+                                    sizeof(FlagshipString) * flag->s_string.valid.cap,
                                     ctx->allocator.ctx);
                             }
                         } break;
                         case FLAGSHIP_TYPE_ENUM: {
-                            if(flag->s_enum.ptr) {
+                            if(flag->s_enum.variants.ptr) {
                                 ctx->allocator.free(
-                                    flag->s_enum.ptr,
-                                    sizeof(struct FlagshipEnumVariant) * flag->s_enum.cap,
+                                    flag->s_enum.variants.ptr,
+                                    sizeof(struct FlagshipEnumVariant) * flag->s_enum.variants.cap,
                                     ctx->allocator.ctx);
                             }
                         } break;
@@ -1671,16 +1870,33 @@ void flagship_end(struct FlagshipContext *ctx) {
 }
 
 FLAGSHIP_INLINE
+bool flagship_is_modal(struct FlagshipContext *ctx) {
+    if(!ctx->modes.ptr) {
+        return false;
+    }
+
+    if(ctx->modes.len > 1) {
+        return true;
+    } else {
+        return ctx->modes.ptr[0].names.ptr != NULL;
+    }
+}
+
+FLAGSHIP_INLINE
 const char *flagship_deref(struct FlagshipContext *ctx, FlagshipString string) {
-    ASSERT((string) && (string < ctx->str.len), "attempted to dereference invalid string!");
+    flagship_assert(
+        (string) && (string < ctx->str.len), "attempted to dereference invalid string!");
     return ctx->str.ptr + string;
 }
 
 FLAGSHIP_INLINE
 size_t __flagship_stream_file(void *target, size_t count, const void *bytes) {
     if(target) {
-        size_t result = fwrite(bytes, count, 1, (FILE *)target);
+        FILE *file = (FILE *)target;
+
+        size_t result = fwrite(bytes, count, 1, file);
         fflush((FILE *)target);
+
         return result;
     } else {
         return count;
@@ -1688,101 +1904,553 @@ size_t __flagship_stream_file(void *target, size_t count, const void *bytes) {
 }
 
 FLAGSHIP_INLINE
+size_t __flagship_stream_columns(
+    FlagshipStreamFn *stream, void *target,
+    struct FlagshipAllocator *alloc,
+    struct __FlagshipBufferChar *_left,
+    struct __FlagshipBufferChar *_right
+) {
+    flagship_reserve(alloc, _left, 1);
+    flagship_reserve(alloc, _right, 1);
+    _left->ptr[_left->len++]   = 0;
+    _right->ptr[_right->len++] = 0;
+
+    size_t result = 0;
+
+    const char *left  = _left->ptr;
+    const char *right = _right->ptr;
+
+    size_t longest_line = 0;
+    while(*left) {
+        const char *nl = strchr(left, '\n');
+
+        size_t line_len = 0;
+
+        if(nl) {
+            line_len = nl - left;
+        } else {
+            line_len = strlen(left);
+        }
+
+        if(line_len > longest_line) {
+            longest_line = line_len;
+        }
+
+        if(nl) {
+            left += line_len + 1;
+        } else {
+            break;
+        }
+    }
+
+    size_t padding = longest_line + 1;
+
+    left = _left->ptr;
+
+    while(*left || *right) {
+        const char *nl = NULL;
+
+        size_t this_padding = padding;
+        if(*left) {
+            nl = strchr(left, '\n');
+
+            size_t len = 0;
+            if(nl) {
+                len = nl - left;
+            } else {
+                len = strlen(left);
+            }
+
+            this_padding -= len;
+
+            result += stream(target, len, left);
+
+            left += len;
+            if(nl) {
+                left++;
+            }
+        }
+
+        if(*right) {
+            for(size_t i = 0; i < this_padding; ++i) {
+                char ch = ' ';
+                result += stream(target, 1, &ch);
+            }
+
+            nl = strchr(right, '\n');
+
+            size_t len = 0;
+            if(nl) {
+                len = nl - right;
+            } else {
+                len = strlen(right);
+            }
+
+            result += stream(target, len, right);
+
+            right += len;
+            if(nl) {
+                right++;
+            }
+        }
+
+        char ch = '\n';
+        result += stream(target, 1, &ch);
+    }
+
+    _left->len = _right->len = 0;
+
+    return result;
+}
+
+FLAGSHIP_INLINE
 size_t flagship_help_stream(
-    struct FlagshipContext *ctx, const char *mode_name,
+    struct FlagshipContext *ctx, const char *mode_name, bool print_modes,
     FlagshipStreamFn *stream, void *target
 ) {
     size_t result = 0;
-#define p(fmt, ...) do { \
-    ctx->tmp.len = 0; \
-    const char *str = ctx->tmp.ptr + __flagship_fmt_tmp(ctx, fmt __VA_OPT__(,) __VA_ARGS__ ); \
-    result += stream(target, strlen(str), str); \
-} while(0)
 
-    int padding = 0;
+    struct __FlagshipBufferChar l, r;
+    memset(&l, 0, sizeof(l));
+    memset(&r, 0, sizeof(r));
 
-    if(ctx->description) {
-        padding = padding < sizeof("OVERVIEW:") ? sizeof("OVERVIEW:") : padding;
+    #define fmt_(b, f, ...) flagship_fmt(&ctx->allocator, (b), NULL, f __VA_OPT__(,) __VA_ARGS__ ); (b)->len--
+    #define fmt(b, f, ...)  fmt_(b, f "\n" __VA_OPT__(,) __VA_ARGS__ )
+    #define flush()         result += __flagship_stream_columns(stream, target, &ctx->allocator, &l, &r)
+
+    bool is_modal;
+    if(!ctx->modes.ptr) {
+        return result;
     }
-    if(ctx->name) {
-        padding = padding < sizeof("USAGE:") ? sizeof("USAGE:") : padding;
-    }
 
-    padding = padding < sizeof("ARGUMENTS:") ? sizeof("ARGUMENTS:") : padding;
+    is_modal = flagship_is_modal(ctx);
 
-    padding++;
-
-    struct FlagshipMode *mode = NULL;
+    struct FlagshipMode *mode = ctx->modes.ptr;
     if(mode_name) {
         for(unsigned int i = 0; i < ctx->modes.len; ++i) {
             struct FlagshipMode *current_mode = ctx->modes.ptr + i;
 
-            if(current_mode->names.ptr && current_mode->names.ptr[0]) {
-                const char *current_name = flagship_deref(ctx, current_mode->names.ptr[0]);
+            if(!current_mode->names.ptr || !current_mode->names.ptr[0]) {
+                continue;
+            }
 
-                if(strcmp(current_name, mode_name) == 0) {
-                    mode = current_mode;
-                    break;
-                }
+            const char *current_name = flagship_deref(ctx, current_mode->names.ptr[0]);
+
+            if(strcmp(mode_name, current_name) == 0) {
+                mode = current_mode;
+                break;
             }
         }
-    }
+    } else {
+        for(unsigned int i = 0; i < ctx->modes.len; ++i) {
+            struct FlagshipMode *current_mode = ctx->modes.ptr + i;
 
-    bool should_print_modes = !mode;
-
-    if(!mode) {
-        mode = ctx->modes.ptr;
-    }
-
-    if(should_print_modes) {
-        padding = padding < sizeof("MODES:") ? sizeof("MODES:") : padding;
+            if(!current_mode->names.ptr || !current_mode->names.ptr[0]) {
+                mode = current_mode;
+                break;
+            }
+        }
     }
 
     if(ctx->description) {
-        const char *desc = flagship_deref(ctx, ctx->description);
-
-        p("OVERVIEW: %*s\n", padding, desc);
+        fmt(&l, "OVERVIEW:");
+        fmt(&r, "%s", flagship_deref(ctx, ctx->description));
     }
 
     if(ctx->name) {
-        const char *name = flagship_deref(ctx, ctx->name);
+        fmt(&l, "USAGE:");
 
-        p("USAGE: %*s ", padding, name);
-        if(mode_name && !should_print_modes) {
-            p("%s [args...]", mode_name);
+        const char *program_name = flagship_deref(ctx, ctx->name);
+
+        if(is_modal) {
+            if(mode_name) {
+                fmt(&r, "%s %s [args...]", program_name, mode_name);
+            } else {
+                fmt(&r, "%s <mode> [args...]", program_name);
+            }
         } else {
-            p("<mode> [args...]");
+            fmt(&r, "%s [args...]", program_name);
         }
-        p("\n");
     }
 
-    if(should_print_modes) {
-        p("MODES:\n");
+    if(mode->description) {
+        fmt(&l, "DESCRIPTION:");
+        fmt(&r, "%s", flagship_deref(ctx, mode->description));
+    }
+
+    if(is_modal && (!mode_name || print_modes)) {
+        fmt(&l, "MODES:");
+        flush();
 
         for(unsigned int i = 0; i < ctx->modes.len; ++i) {
-            struct FlagshipMode *m = ctx->modes.ptr + i;
+            struct FlagshipMode *mode = ctx->modes.ptr + i;
 
-            if(m->names.ptr) {
+            if(mode->names.len) {
+                for(unsigned int j = 0; j < mode->names.len; ++j) {
+                    const char *name  = "";
+                    if(mode->names.ptr[j]) {
+                        name = flagship_deref(ctx, mode->names.ptr[j]);
+                    } else {
+                        name = "<no-name>";
+                    }
+
+                    const char *pad   = j ? "  " : "";
+                    const char *comma = (j + 1) < mode->names.len ? "," : "";
+                    fmt(&l, "  %s%s%s ", pad, name, comma);
+                }
+            } else {
+                fmt(&l, "  <no-name> ");
             }
+
+            int attachment_padding = 0;
+            if(mode->note || mode->is_terminating) {
+                attachment_padding =
+                    attachment_padding < (int)sizeof("note") ?
+                        (int)sizeof("note") : attachment_padding;
+            }
+            if(mode->warning) {
+                attachment_padding =
+                    attachment_padding < (int)sizeof("warning") ?
+                        (int)sizeof("warning") : attachment_padding;
+            }
+            attachment_padding++;
+
+            if(mode->description) {
+                const char *d = flagship_deref(ctx, mode->description);
+                fmt(&r, "%s", d);
+            }
+
+            if(mode->note) {
+                const char *n = flagship_deref(ctx, mode->note);
+                fmt(&r, "  %*s%s", -attachment_padding, "note:", n);
+            }
+
+            if(mode->warning) {
+                const char *w = flagship_deref(ctx, mode->warning);
+                fmt(&r, "  %*s%s", -attachment_padding, "warning:", w);
+            }
+
+            if(mode->is_terminating) {
+                fmt(&r, "  %*swhen this mode is encountered, no other modes are parsed", -attachment_padding, "note:");
+            }
+        }
+
+        flush();
+    }
+
+    fmt(&l, "ARGUMENTS:");
+    flush();
+
+    for(unsigned int i = 0; i < mode->flags.len; ++i) {
+        struct FlagshipFlag *flag = mode->flags.ptr + i;
+
+        const char *type_name = flagship_string_from_type(flag->type);
+
+        int lc, rc;
+        lc = rc = 0;
+
+        if(flag->names.len) {
+            for(unsigned int j = 0; j < flag->names.len; ++j) {
+                const char *pad   = j ? "  " : "";
+                const char *comma = (j + 1) < flag->names.len ? "," : "";
+
+                if(flag->names.ptr[j]) {
+                    const char *name = flagship_deref(ctx, flag->names.ptr[j]);
+
+                    switch(flag->type) {
+                        case FLAGSHIP_TYPE_NULL: break;
+                        case FLAGSHIP_TYPE_BOOL: {
+                            fmt(&l, "  %s-%s%s ", pad, name, comma);
+                            lc++;
+                        } break;
+                        case FLAGSHIP_TYPE_FLOAT:
+                        case FLAGSHIP_TYPE_STRING:
+                        case FLAGSHIP_TYPE_ENUM:
+                        case FLAGSHIP_TYPE_INTEGER: {
+                            fmt(&l, "  %s-%s <%s>,", pad, name, type_name);
+                            lc++;
+                            pad = "  ";
+                            fmt(&l, "  %s-%s:<%s>%s", pad, name, type_name, comma);
+                            lc++;
+                        } break;
+                      break;
+                    }
+                } else {
+                    fmt(&l, "  %s<%s>%s ", pad, type_name, comma);
+                    lc++;
+                }
+            }
+        } else {
+            fmt(&l, "  <%s> ", type_name);
+            lc++;
+        }
+
+        if(flag->description) {
+            const char *str = flagship_deref(ctx, flag->description);
+
+            fmt(&r, "%s", str);
+            rc++;
+        }
+
+        int attachment_padding = 0;
+        if(flag->note || flag->is_terminating || flag->is_repeatable) {
+            attachment_padding =
+                attachment_padding < (int)sizeof("note") ?
+                    (int)sizeof("note") : attachment_padding;
+        }
+        if(flag->warning || flag->is_required) {
+            attachment_padding =
+                attachment_padding < (int)sizeof("warning") ?
+                    (int)sizeof("warning") : attachment_padding;
+        }
+        if(flag->has_default) {
+            attachment_padding =
+                attachment_padding < (int)sizeof("default") ?
+                    (int)sizeof("default") : attachment_padding;
+        }
+        switch(flag->type) {
+            case FLAGSHIP_TYPE_NULL: break;
+            case FLAGSHIP_TYPE_BOOL: {
+                if(flag->s_bool.is_toggle) {
+                    attachment_padding =
+                        attachment_padding < (int)sizeof("note") ?
+                            (int)sizeof("note") : attachment_padding;
+                }
+            } break;
+            case FLAGSHIP_TYPE_INTEGER: {
+                if(flag->s_integer.min != flag->s_integer.max) {
+                    attachment_padding =
+                        attachment_padding < (int)sizeof("range") ?
+                            (int)sizeof("range") : attachment_padding;
+                }
+            } break;
+            case FLAGSHIP_TYPE_FLOAT: {
+                if(flag->s_float.min != flag->s_float.max) {
+                    attachment_padding =
+                        attachment_padding < (int)sizeof("range") ?
+                            (int)sizeof("range") : attachment_padding;
+                }
+            } break;
+            case FLAGSHIP_TYPE_STRING: {
+                if(flag->s_string.valid.len) {
+                    attachment_padding =
+                        attachment_padding < (int)sizeof("valid") ?
+                            (int)sizeof("valid") : attachment_padding;
+                }
+            } break;
+            case FLAGSHIP_TYPE_ENUM: {
+                attachment_padding =
+                    attachment_padding < (int)sizeof("variants") ?
+                        (int)sizeof("variants") : attachment_padding;
+            } break;
+        }
+        attachment_padding++;
+
+        bool has_note    = false;
+        bool has_warning = false;
+
+        if(flag->note) {
+            const char *str = flagship_deref(ctx, flag->note);
+            fmt(&r, "  %*s%s",
+                -(attachment_padding + (has_note ? 2 : 0)), has_note ? "" : "note:", str);
+            rc++;
+            has_note = true;
+        }
+
+        if(flag->is_terminating) {
+            fmt(&r, "  %*sif this flag is encountered, stops parsing all remaining flags",
+                -(attachment_padding + (has_note ? 2 : 0)), has_note ? "" : "note:");
+            rc++;
+            has_note = true;
+        }
+
+        if(flag->is_repeatable) {
+            fmt(&r, "  %*sthis flag can be used multiple times",
+                -(attachment_padding + (has_note ? 2 : 0)), has_note ? "" : "note:");
+            rc++;
+            has_note = true;
+        }
+
+        if(flag->type == FLAGSHIP_TYPE_BOOL) {
+            if(flag->s_bool.is_toggle) {
+                fmt(&r, "  %*seach occurrence of this flag toggles it",
+                    -(attachment_padding + (has_note ? 2 : 0)), has_note ? "" : "note:");
+                rc++;
+                has_note = true;
+            }
+        }
+
+        if(flag->warning) {
+            const char *str = flagship_deref(ctx, flag->warning);
+            fmt(&r, "  %*s%s",
+                -(attachment_padding + (has_warning ? 2 : 0)),
+                has_warning ? "  " : "warning:", str);
+            rc++;
+            has_warning = true;
+        }
+
+        if(flag->is_required) {
+            fmt(&r, "  %*sthis flag is required",
+                -(attachment_padding + (has_warning ? 2 : 0)), has_warning ? "" : "warning:");
+            rc++;
+            has_warning = true;
+        }
+
+        switch(flag->type) {
+            case FLAGSHIP_TYPE_NULL:
+            case FLAGSHIP_TYPE_BOOL: break;
+            case FLAGSHIP_TYPE_INTEGER: {
+                if(flag->s_integer.min != flag->s_integer.max) {
+                    fmt(&r, "  %*s[%d, %d)",
+                        -attachment_padding, "range:", flag->s_integer.min, flag->s_integer.max);
+                    rc++;
+                }
+            } break;
+            case FLAGSHIP_TYPE_FLOAT: {
+                if(flag->s_float.min != flag->s_float.max) {
+                    fmt(&r, "  %*s[%f, %f)",
+                        -attachment_padding, "range:", flag->s_float.min, flag->s_float.max);
+                    rc++;
+                }
+            } break;
+            case FLAGSHIP_TYPE_STRING: {
+                if(flag->s_string.valid.len) {
+                    fmt_(&r, "  %*s ", -attachment_padding, "valid:");
+                    for(unsigned j = 0; j < flag->s_string.valid.len; ++j) {
+                        const char *v = "";
+                        if(flag->s_string.valid.ptr[j]) {
+                            v = flagship_deref(ctx, flag->s_string.valid.ptr[j]);
+                        }
+
+                        const char *comma = (j + 1) < flag->s_string.valid.len ? ", " : "";
+
+                        fmt_(&r, "%s%s", v, comma);
+                    }
+                    fmt_(&r, "\n");
+                    rc++;
+                }
+            } break;
+            case FLAGSHIP_TYPE_ENUM: {
+                if(flag->s_enum.variants.len) {
+                    fmt_(&r, "  %*s", -attachment_padding, "variants:");
+                    int previous_value = 0;
+                    for(unsigned j = 0; j < flag->s_enum.variants.len; ++j) {
+                        struct FlagshipEnumVariant *variant = flag->s_enum.variants.ptr + j;
+                        const char *v = "";
+                        if(variant->name) {
+                            v = flagship_deref(ctx, variant->name);
+                        }
+
+                        const char *comma = (j + 1) < flag->s_string.valid.len ? ", " : "";
+
+                        if((variant->value - previous_value) > 1) {
+                            fmt_(&r, "%d: %s%s", variant->value, v, comma);
+                        } else {
+                            fmt_(&r, "%s%s", v, comma);
+                        }
+                        previous_value = variant->value;
+                    }
+                    fmt_(&r, "\n");
+                    rc++;
+                }
+            } break;
+        }
+
+        switch(flag->type) {
+            case FLAGSHIP_TYPE_NULL: break;
+            case FLAGSHIP_TYPE_BOOL: {
+                if(flag->has_default) {
+                    fmt(&r, "  %*s%s",
+                        -attachment_padding, "default:", flag->t_bool_default ? "true" : "false");
+                    rc++;
+                }
+            } break;
+            case FLAGSHIP_TYPE_INTEGER: {
+                if(flag->has_default) {
+                    fmt(&r, "  %*s%d",
+                        -attachment_padding, "default:", flag->t_integer_default);
+                    rc++;
+                }
+            } break;
+            case FLAGSHIP_TYPE_FLOAT: {
+                if(flag->has_default) {
+                    fmt(&r, "  %*s%f",
+                        -attachment_padding, "default:", flag->t_float_default);
+                    rc++;
+                }
+            } break;
+            case FLAGSHIP_TYPE_STRING: {
+                if(flag->has_default) {
+                    const char *str = "";
+                    if(flag->t_string_default) {
+                        str = flagship_deref(ctx, flag->t_string_default);
+                    }
+                    fmt(&r, "  %*s%s",
+                        -attachment_padding, "default:", str);
+                    rc++;
+                }
+            } break;
+            case FLAGSHIP_TYPE_ENUM: {
+                if(flag->has_default) {
+                    struct FlagshipEnumVariant *variant = flag->s_enum.variants.ptr + flag->t_enum_default;
+                    const char *v = "";
+                    if(variant->name) {
+                        v = flagship_deref(ctx, variant->name);
+                    }
+                    fmt(&r, "  %*s%s",
+                        -attachment_padding, "default:", v);
+                    rc++;
+                }
+            } break;
+        }
+
+        if(lc > rc) {
+            unsigned int pc = lc - rc;
+            for(unsigned int j = 0; j < pc; ++j) {
+                fmt(&r, "");
+            }
+        } else if(rc > lc) {
+            unsigned int pc = rc - lc;
+            for(unsigned int j = 0; j < pc; ++j) {
+                fmt(&l, "");
+            }
+        }
+
+        if((i + 1) < mode->flags.len) {
+            // separate arguments with an empty line
+            fmt(&l, "");
+            fmt(&r, "");
         }
     }
 
-    p("ARGUMENTS:\n");
+    flush();
+
+    if(l.ptr) {
+        flagship_free(&ctx->allocator, l.ptr, l.cap);
+    }
+    if(r.ptr) {
+        flagship_free(&ctx->allocator, r.ptr, r.cap);
+    }
 
     return result;
-#undef p
+    #undef fmt_
+    #undef fmt
+    #undef flush
 }
 
 FLAGSHIP_INLINE
-void flagship_help_print(struct FlagshipContext *ctx, const char *mode) {
-    flagship_help_stream(ctx, mode, __flagship_stream_file, stdout);
+void flagship_help_print(struct FlagshipContext *ctx, const char *mode, bool print_modes) {
+    flagship_help_stream(ctx, mode, print_modes, __flagship_stream_file, stdout);
 }
 
 FLAGSHIP_INLINE
 bool flagship_parse_streaming_errors(
     struct FlagshipContext *ctx, int argc, char** argv,
     FlagshipStreamFn *stream, void *error_target, void *opt_help_target
-);
+) {
+    (void)ctx, (void)argc, (void)argv, (void)stream, (void)error_target, (void)opt_help_target;
+    return false;
+}
 
 FLAGSHIP_INLINE
 bool flagship_parse(struct FlagshipContext *ctx, int argc, char** argv, bool print_help) {
@@ -1790,13 +2458,18 @@ bool flagship_parse(struct FlagshipContext *ctx, int argc, char** argv, bool pri
         ctx, argc, argv, __flagship_stream_file, stderr, print_help ? stdout : NULL);
 }
 
-#undef ALLOC
-#undef REALLOC
-#undef FREE
-#undef RESERVE
 #undef FLAGSHIP_INLINE
 #undef FLAGSHIP_FMTFUNC
 #undef STRUCT
-#undef ASSERT
+#undef flagship_reset_cbuf
+#undef flagship_alloc
+#undef flagship_realloc
+#undef flagship_free
+#undef flagship_reserve
+#undef flagship_assert
+#undef flagship_fmt
+#undef flagship_fmt_va
+#undef flagship_fmt_deref
+#undef flagship_fmt_deref_va
 
 #endif /* header guard */
