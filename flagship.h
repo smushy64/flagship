@@ -115,13 +115,14 @@ struct FlagshipResult {
         const char *t_string;
         /// @brief Enum value.
         int         t_enum;
-        struct {
-            int             t_enum;
-            FlagshipString *variants;
-        } __enum;
     };
     /// @brief Type of this flag.
     enum FlagshipType type;
+
+    /// @brief Name of mode and flag.
+    /// @note Pointer to string buffers so that
+    /// results can be looked up with any mode/flag name alias.
+    struct __FlagshipBufferString *mode, *name;
 
     /// @brief If this flag was actually set.
     bool         was_set  : 1;
@@ -450,13 +451,40 @@ size_t flagship_help_stream(
 FLAGSHIP_INLINE
 void flagship_help_print(struct FlagshipContext *ctx, const char *mode, bool print_modes);
 
+/// @brief Parse flags.
+/// @param[in] ctx          Pointer to context.
+/// @param     argc         Argument count.
+/// @param[in] argv         Arguments.
+/// @param[in] stream       Message streaming function.
+/// @param[in] error_target Error streaming target.
+/// @param[in] help_target  Help print streaming target.
+/// @param     print_help   If help should be printed when an error is encountered.
+/// @return True if flags are parsed successfully.
 FLAGSHIP_INLINE
 bool flagship_parse_streaming_errors(
     struct FlagshipContext *ctx, int argc, char** argv,
-    FlagshipStreamFn *stream, void *error_target, void *opt_help_target);
+    FlagshipStreamFn *stream, void *error_target, void *help_target, bool print_help);
 
+/// @brief Parse flags.
+/// @param[in] ctx        Pointer to context.
+/// @param     argc       Argument count.
+/// @param[in] argv       Arguments.
+/// @param     print_help If help should be printed when an error is encountered.
+/// @return True if flags are parsed successfully.
 FLAGSHIP_INLINE
 bool flagship_parse(struct FlagshipContext *ctx, int argc, char** argv, bool print_help);
+
+/// @brief Iterate through parse results.
+/// @param[in]  ctx        Pointer to context.
+/// @param[out] out_result Pointer to write result.
+/// @return True if @c out_result was written to.
+FLAGSHIP_INLINE
+bool flagship_iter_next(struct FlagshipContext *ctx, struct FlagshipResult *out_result);
+
+/// @brief Reset iterator.
+/// @param[in] ctx Pointer to context.
+FLAGSHIP_INLINE
+void flagship_iter_reset(struct FlagshipContext *ctx);
 
 // FLAGSHIP_INLINE
 // bool flagship_mode_iter_next(struct FlagshipContext *ctx, int *out_mode);
@@ -539,6 +567,12 @@ struct __FlagshipBufferEnumVariant {
     struct FlagshipEnumVariant *ptr;
 };
 
+struct __FlagshipBufferResult {
+    unsigned int           cap;
+    unsigned int           len;
+    struct FlagshipResult *ptr;
+};
+
 struct FlagshipFlag {
     enum FlagshipType type;
 
@@ -593,14 +627,17 @@ struct FlagshipMode {
 struct FlagshipContext {
     struct FlagshipAllocator allocator;
 
-    struct __FlagshipBufferChar tmp, str;
-    struct __FlagshipBufferMode modes;
+    struct __FlagshipBufferChar   tmp, str;
+    struct __FlagshipBufferMode   modes;
+    struct __FlagshipBufferResult results;
 
     FlagshipString name, description;
 
     struct {
         int mode, flag;
     } current;
+
+    unsigned int iter;
 };
 
 #define flagship_reset_cbuf(cbuf) \
@@ -1865,6 +1902,13 @@ void flagship_end(struct FlagshipContext *ctx) {
             ctx->allocator.ctx);
     }
 
+    if(ctx->results.ptr) {
+        ctx->allocator.free(
+            ctx->results.ptr,
+            sizeof(ctx->results.ptr[0]) * ctx->results.cap,
+            ctx->allocator.ctx);
+    }
+
     // reset context
     memset(ctx, 0, sizeof(*ctx));
 }
@@ -2141,6 +2185,15 @@ size_t flagship_help_stream(
     fmt(&l, "ARGUMENTS:");
     flush();
 
+    fmt(&l, "  to ignore a flag without deleting it from command line, change - to +");
+    fmt(&l, "    ex: -help -> +help");
+    fmt(&l, "  when a flag takes an argument, argument can be provided as a separate argument");
+    fmt(&l, "  or combined with the flag using ':'");
+    fmt(&l, "    ex: -output dir/file.txt -> -output:dir/file.txt");
+    fmt(&l, "");
+
+    flush();
+
     for(unsigned int i = 0; i < mode->flags.len; ++i) {
         struct FlagshipFlag *flag = mode->flags.ptr + i;
 
@@ -2167,10 +2220,7 @@ size_t flagship_help_stream(
                         case FLAGSHIP_TYPE_STRING:
                         case FLAGSHIP_TYPE_ENUM:
                         case FLAGSHIP_TYPE_INTEGER: {
-                            fmt(&l, "  %s-%s <%s>,", pad, name, type_name);
-                            lc++;
-                            pad = "  ";
-                            fmt(&l, "  %s-%s:<%s>%s", pad, name, type_name, comma);
+                            fmt(&l, "  %s-%s <%s>%s", pad, name, type_name, comma);
                             lc++;
                         } break;
                       break;
@@ -2188,7 +2238,7 @@ size_t flagship_help_stream(
         if(flag->description) {
             const char *str = flagship_deref(ctx, flag->description);
 
-            fmt(&r, "%s", str);
+            fmt(&r, " %s", str);
             rc++;
         }
 
@@ -2251,21 +2301,21 @@ size_t flagship_help_stream(
 
         if(flag->note) {
             const char *str = flagship_deref(ctx, flag->note);
-            fmt(&r, "  %*s%s",
+            fmt(&r, "   %*s%s",
                 -(attachment_padding + (has_note ? 2 : 0)), has_note ? "" : "note:", str);
             rc++;
             has_note = true;
         }
 
         if(flag->is_terminating) {
-            fmt(&r, "  %*sif this flag is encountered, stops parsing all remaining flags",
+            fmt(&r, "   %*sif this flag is encountered, stops parsing all remaining flags",
                 -(attachment_padding + (has_note ? 2 : 0)), has_note ? "" : "note:");
             rc++;
             has_note = true;
         }
 
         if(flag->is_repeatable) {
-            fmt(&r, "  %*sthis flag can be used multiple times",
+            fmt(&r, "   %*sthis flag can be used multiple times",
                 -(attachment_padding + (has_note ? 2 : 0)), has_note ? "" : "note:");
             rc++;
             has_note = true;
@@ -2273,7 +2323,7 @@ size_t flagship_help_stream(
 
         if(flag->type == FLAGSHIP_TYPE_BOOL) {
             if(flag->s_bool.is_toggle) {
-                fmt(&r, "  %*seach occurrence of this flag toggles it",
+                fmt(&r, "   %*seach occurrence of this flag toggles it",
                     -(attachment_padding + (has_note ? 2 : 0)), has_note ? "" : "note:");
                 rc++;
                 has_note = true;
@@ -2282,7 +2332,7 @@ size_t flagship_help_stream(
 
         if(flag->warning) {
             const char *str = flagship_deref(ctx, flag->warning);
-            fmt(&r, "  %*s%s",
+            fmt(&r, "   %*s%s",
                 -(attachment_padding + (has_warning ? 2 : 0)),
                 has_warning ? "  " : "warning:", str);
             rc++;
@@ -2290,7 +2340,7 @@ size_t flagship_help_stream(
         }
 
         if(flag->is_required) {
-            fmt(&r, "  %*sthis flag is required",
+            fmt(&r, "   %*sthis flag is required",
                 -(attachment_padding + (has_warning ? 2 : 0)), has_warning ? "" : "warning:");
             rc++;
             has_warning = true;
@@ -2301,21 +2351,21 @@ size_t flagship_help_stream(
             case FLAGSHIP_TYPE_BOOL: break;
             case FLAGSHIP_TYPE_INTEGER: {
                 if(flag->s_integer.min != flag->s_integer.max) {
-                    fmt(&r, "  %*s[%d, %d)",
+                    fmt(&r, "   %*s[%d, %d)",
                         -attachment_padding, "range:", flag->s_integer.min, flag->s_integer.max);
                     rc++;
                 }
             } break;
             case FLAGSHIP_TYPE_FLOAT: {
                 if(flag->s_float.min != flag->s_float.max) {
-                    fmt(&r, "  %*s[%f, %f)",
+                    fmt(&r, "   %*s[%f, %f)",
                         -attachment_padding, "range:", flag->s_float.min, flag->s_float.max);
                     rc++;
                 }
             } break;
             case FLAGSHIP_TYPE_STRING: {
                 if(flag->s_string.valid.len) {
-                    fmt_(&r, "  %*s ", -attachment_padding, "valid:");
+                    fmt_(&r, "   %*s ", -attachment_padding, "valid:");
                     for(unsigned j = 0; j < flag->s_string.valid.len; ++j) {
                         const char *v = "";
                         if(flag->s_string.valid.ptr[j]) {
@@ -2324,7 +2374,7 @@ size_t flagship_help_stream(
 
                         const char *comma = (j + 1) < flag->s_string.valid.len ? ", " : "";
 
-                        fmt_(&r, "%s%s", v, comma);
+                        fmt_(&r,  "%s%s", v, comma);
                     }
                     fmt_(&r, "\n");
                     rc++;
@@ -2332,7 +2382,7 @@ size_t flagship_help_stream(
             } break;
             case FLAGSHIP_TYPE_ENUM: {
                 if(flag->s_enum.variants.len) {
-                    fmt_(&r, "  %*s", -attachment_padding, "variants:");
+                    fmt_(&r, "   %*s", -attachment_padding, "variants:");
                     int previous_value = 0;
                     for(unsigned j = 0; j < flag->s_enum.variants.len; ++j) {
                         struct FlagshipEnumVariant *variant = flag->s_enum.variants.ptr + j;
@@ -2360,21 +2410,21 @@ size_t flagship_help_stream(
             case FLAGSHIP_TYPE_NULL: break;
             case FLAGSHIP_TYPE_BOOL: {
                 if(flag->has_default) {
-                    fmt(&r, "  %*s%s",
+                    fmt(&r, "   %*s%s",
                         -attachment_padding, "default:", flag->t_bool_default ? "true" : "false");
                     rc++;
                 }
             } break;
             case FLAGSHIP_TYPE_INTEGER: {
                 if(flag->has_default) {
-                    fmt(&r, "  %*s%d",
+                    fmt(&r, "   %*s%d",
                         -attachment_padding, "default:", flag->t_integer_default);
                     rc++;
                 }
             } break;
             case FLAGSHIP_TYPE_FLOAT: {
                 if(flag->has_default) {
-                    fmt(&r, "  %*s%f",
+                    fmt(&r, "   %*s%f",
                         -attachment_padding, "default:", flag->t_float_default);
                     rc++;
                 }
@@ -2385,7 +2435,7 @@ size_t flagship_help_stream(
                     if(flag->t_string_default) {
                         str = flagship_deref(ctx, flag->t_string_default);
                     }
-                    fmt(&r, "  %*s%s",
+                    fmt(&r, "   %*s%s",
                         -attachment_padding, "default:", str);
                     rc++;
                 }
@@ -2397,7 +2447,7 @@ size_t flagship_help_stream(
                     if(variant->name) {
                         v = flagship_deref(ctx, variant->name);
                     }
-                    fmt(&r, "  %*s%s",
+                    fmt(&r, "   %*s%s",
                         -attachment_padding, "default:", v);
                     rc++;
                 }
@@ -2443,20 +2493,643 @@ void flagship_help_print(struct FlagshipContext *ctx, const char *mode, bool pri
     flagship_help_stream(ctx, mode, print_modes, __flagship_stream_file, stdout);
 }
 
+FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(4, 5)
+void __flagship_stream_message(
+    struct FlagshipContext *ctx, FlagshipStreamFn *stream, void *target, const char *message, ...
+) {
+    ctx->tmp.len = 0;
+    va_list va;
+    va_start(va, message);
+    unsigned int len = 0;
+    flagship_fmt_va(&ctx->allocator, &ctx->tmp, &len, message, va);
+    va_end(va);
+
+    stream(target, len, ctx->tmp.ptr);
+}
+
+FLAGSHIP_INLINE
+int __flagship_result_sort_comp(const void *_lhs, const void *_rhs) {
+    const struct FlagshipResult *lhs, *rhs;
+    lhs = (const struct FlagshipResult *)_lhs;
+    rhs = (const struct FlagshipResult *)_rhs;
+
+    if(lhs->position < rhs->position) {
+        return -1;
+    } else if(lhs->position > rhs->position) {
+        return 1;
+    }
+
+    return 0;
+}
+
 FLAGSHIP_INLINE
 bool flagship_parse_streaming_errors(
     struct FlagshipContext *ctx, int argc, char** argv,
-    FlagshipStreamFn *stream, void *error_target, void *opt_help_target
+    FlagshipStreamFn *stream, void *error_target, void *help_target,
+    bool print_help
 ) {
-    (void)ctx, (void)argc, (void)argv, (void)stream, (void)error_target, (void)opt_help_target;
-    return false;
+    flagship_assert(stream, "NULL streaming function provided!");
+
+    bool is_modal = flagship_is_modal(ctx);
+    int  mode     = -1;
+
+    if(!is_modal) {
+        mode = 0;
+    }
+
+    #define adv() argc--; argv++
+    #define err(fmt, ...) \
+        __flagship_stream_message( \
+            ctx, stream, error_target, "error: " fmt __VA_OPT__(,) __VA_ARGS__ )
+
+    bool success = true;
+
+    int total_argc = argc;
+
+    struct FlagshipResult f;
+    memset(&f, 0, sizeof(f));
+
+    // TODO(alicia): add default flags!
+
+    while(argc) {
+        if(argc == total_argc) {
+            adv();
+        }
+
+        const char *arg = NULL;
+        if(argc) {
+            arg = *argv;
+        }
+
+        if(is_modal && (mode < 0)) {
+            /* get mode */ {
+                if(arg && arg[0] != '-') {
+                    for(unsigned int i = 0; i < ctx->modes.len; ++i) {
+                        struct FlagshipMode *m = ctx->modes.ptr + i;
+
+                        for(unsigned int j = 0; j < m->names.len; ++j) {
+                            if(!m->names.ptr[j]) {
+                                continue;
+                            }
+
+                            const char *mode_name = flagship_deref(ctx, m->names.ptr[j]);
+
+                            if(strcmp(arg, mode_name) == 0) {
+                                mode = i;
+                                break;
+                            }
+                        }
+
+                        if(mode >= 0) {
+                            break;
+                        }
+                    }
+
+                    if(mode >= 0) {
+                        adv();
+                        continue;
+                    }
+                }
+
+                if(mode < 0) {
+                    bool has_null_mode = false;
+                    for(unsigned int i = 0; i < ctx->modes.len; ++i) {
+                        struct FlagshipMode *mode = ctx->modes.ptr + i;
+
+                        if(!mode->names.ptr || !mode->names.ptr[0]) {
+                            has_null_mode = true;
+                            break;
+                        }
+                    }
+
+                    if(has_null_mode) {
+                        mode = 0;
+                    } else {
+                        success = false;
+                        err("no mode was provided!\n");
+
+                        break;
+                    }
+                }
+            }
+        }
+
+        struct FlagshipMode *m = ctx->modes.ptr + mode;
+
+        /* parse flag */ {
+            // search for flag name
+            const char *name = arg;
+
+            // argument is literal
+            bool is_literal = true;
+
+            switch(name[0]) {
+                case '\\':
+                    // check if next char is +
+                    // if so, treat argument as literal
+                    // otherwise, do nothing
+                    if(name[1] == '+') {
+                        name++;
+                    }
+                    break;
+                case '+':
+                    // skip arguments that start with +
+                    break;
+                // skip leading -
+                case '-':
+                    name++;
+                    // argument is not literal
+                    is_literal = false;
+                    break;
+                // otherwise, do nothing
+                default:
+                    break;
+            }
+
+            if(is_literal) {
+                enum FlagshipType type = FLAGSHIP_TYPE_STRING;
+                union {
+                    double f;
+                    long   i;
+                } numerical = {0};
+
+                char *endptr = NULL;
+                numerical.i = strtol(name, &endptr, 10);
+
+                if(endptr && name != endptr && !*endptr) {
+                    type = FLAGSHIP_TYPE_INTEGER;
+                } else {
+                    numerical.f = strtod(name, &endptr);
+
+                    if(endptr && name != endptr && !*endptr) {
+                        type = FLAGSHIP_TYPE_FLOAT;
+                    }
+                }
+
+                // now that we know what type of nameless flag
+                // to search for, search for nameless + valid type
+
+                struct FlagshipFlag *f = NULL;
+
+                for(unsigned int i = 0; i < m->flags.len; ++i) {
+                    struct FlagshipFlag *current = m->flags.ptr + i;
+
+                    if(!current->names.ptr || !current->names.ptr[0]) {
+                        if(current->type == type) {
+                            f = current;
+                            break;
+                        }
+                    }
+                }
+
+                if(!f) {
+                    success = false;
+                    err("invalid nameless flag: %s\n", name);
+
+                    break;
+                }
+
+                struct FlagshipResult result = {0};
+
+                result.was_set  = true;
+                result.position = total_argc - argc;
+
+                result.mode = &m->names;
+                result.name = &f->names;
+
+                result.type = f->type;
+
+                switch(f->type) {
+                    case FLAGSHIP_TYPE_NULL:
+                    case FLAGSHIP_TYPE_BOOL:
+                        break;
+                    case FLAGSHIP_TYPE_INTEGER:
+                        if(f->s_integer.min != f->s_integer.max) {
+                            if(
+                                (numerical.i >= f->s_integer.max) ||
+                                (numerical.i < f->s_integer.min)
+                            ) {
+                                success = false;
+                                err("integer out of range: %d [%d, %d)\n",
+                                    (int)numerical.i, f->s_integer.min, f->s_integer.max);
+                            }
+                        }
+
+                        if(success) {
+                            result.t_integer = numerical.i;
+                        }
+                        break;
+                    case FLAGSHIP_TYPE_FLOAT:
+                        if(f->s_float.min != f->s_float.max) {
+                            if(
+                                (numerical.i >= f->s_float.max) ||
+                                (numerical.i < f->s_float.min)
+                            ) {
+                                success = false;
+                                err("float out of range: %f [%f, %f)\n",
+                                    numerical.f, f->s_float.min, f->s_float.max);
+                            }
+                        }
+
+                        if(success) {
+                            result.t_float = numerical.f;
+                        }
+                        break;
+                    case FLAGSHIP_TYPE_STRING: {
+                        bool is_valid = false;
+                        if(f->s_string.valid.len) {
+                            for(unsigned int i = 0; i < f->s_string.valid.len; ++i) {
+                                const char *v = flagship_deref(ctx, f->s_string.valid.ptr[i]);
+
+                                if(strcmp(name, v) == 0) {
+                                    is_valid = true;
+                                    break;
+                                }
+                            }
+                        } else {
+                            is_valid = true;
+                        }
+
+                        if(is_valid) {
+                            result.t_string = name;
+                        } else {
+                            success = false;
+                            err("string is not valid: %s\n", name);
+
+                            break;
+                        }
+                    } break;
+                    case FLAGSHIP_TYPE_ENUM: {
+                        int variant = -1;
+                        for(unsigned int i = 0; i < f->s_enum.variants.len; ++i) {
+                            struct FlagshipEnumVariant *v = f->s_enum.variants.ptr + i;
+
+                            const char *v_name = flagship_deref(ctx, v->name);
+
+                            if(strcmp(name, v_name) == 0) {
+                                variant = i;
+                                break;
+                            }
+                        }
+
+                        if(variant >= 0) {
+                            result.t_enum = variant;
+                        } else {
+                            success = false;
+                            err("enum variant is not valid: %s\n", name);
+
+                            break;
+                        }
+                    } break;
+                }
+
+                if(!success) {
+                    break;
+                }
+
+                bool push_result = false;
+
+                if(f->is_repeatable) {
+                    push_result = true;
+                } else {
+                    struct FlagshipResult *dst = NULL;
+
+                    for(unsigned int i = 0; i < ctx->results.len; ++i) {
+                        struct FlagshipResult *this_result = ctx->results.ptr + i;
+                        if(
+                            (this_result->mode == result.mode) &&
+                            (this_result->name == result.name)
+                        ) {
+                            dst = this_result;
+                            break;
+                        }
+                    }
+
+                    if(dst) {
+                        memcpy(dst, &result, sizeof(result));
+                    } else {
+                        push_result = true;
+                    }
+                }
+
+                if(push_result) {
+                    flagship_reserve(&ctx->allocator, &ctx->results, 1);
+                    ctx->results.ptr[ctx->results.len++] = result;
+                }
+            } else {
+                // search for flag name
+
+                struct FlagshipFlag *f = NULL;
+
+                size_t arg_name_len = 0;
+                const char *colon   = strchr(name, ':');
+                if(colon) {
+                    arg_name_len = colon - name;
+                } else {
+                    arg_name_len = strlen(name);
+                }
+
+                for(unsigned int i = 0; i < m->flags.len; ++i) {
+                    struct FlagshipFlag *current = m->flags.ptr + i;
+
+                    if(!current->names.ptr) {
+                        continue;
+                    }
+
+                    for(unsigned int j = 0; j < current->names.len; ++j) {
+                        const char *n =
+                            current->names.ptr[j] ?
+                                flagship_deref(ctx, current->names.ptr[j]) : NULL;
+
+                        if(!n) {
+                            continue;
+                        }
+
+                        size_t n_len = strlen(n);
+                        if((n_len == arg_name_len) && (memcmp(n, name, arg_name_len) == 0)) {
+                            f = current;
+                            break;
+                        }
+                    }
+
+                    if(f) {
+                        break;
+                    }
+                }
+
+                // flag not found
+                if(!f) {
+                    success = false;
+                    err("unknown flag: %s\n", name);
+
+                    break;
+                }
+
+                struct FlagshipResult result = {0};
+
+                result.was_set  = true;
+                result.position = total_argc - argc;
+
+                result.mode = &m->names;
+                result.name = &f->names;
+
+                result.type = f->type;
+
+                switch(f->type) {
+                    case FLAGSHIP_TYPE_NULL:
+                        break;
+                    case FLAGSHIP_TYPE_BOOL: {
+                        if(colon) {
+                            success = false;
+                            err("boolean flags do not take a payload!\n");
+
+                            break;
+                        }
+
+                        if(f->s_bool.is_toggle) {
+                            unsigned int counter = 0;
+                            for(unsigned int i = 0; i < ctx->results.len; ++i) {
+                                struct FlagshipResult *r = ctx->results.ptr + i;
+
+                                if((r->mode == result.mode) && (r->name == result.name)) {
+                                    counter++;
+                                }
+                            }
+
+                            if(f->s_bool.is_flipped) {
+                                result.t_bool = !((counter % 2) != 0);
+                            } else {
+                                result.t_bool = !((counter % 2) == 0);
+                            }
+                        } else {
+                            result.t_bool = f->s_bool.is_flipped ? false : true;
+                        }
+                    } break;
+                    case FLAGSHIP_TYPE_INTEGER: {
+                        const char *literal = colon;
+                        if(literal) {
+                            literal++;
+                        } else {
+                            adv();
+                            literal = name = *argv;
+                        }
+
+                        char *endptr = NULL;
+                        long v = strtol(literal, &endptr, 10);
+
+                        if(!(endptr && literal != endptr && !*endptr)) {
+                            success = false;
+                            err("invalid integer: %s\n", literal);
+
+                            break;
+                        }
+
+                        if(f->s_integer.min != f->s_integer.max) {
+                            if(
+                                (v >= f->s_integer.max) ||
+                                (v < f->s_integer.min)
+                            ) {
+                                success = false;
+                                err("integer out of range: %d [%d, %d)\n",
+                                    (int)v, f->s_integer.min, f->s_integer.max);
+
+                                break;
+                            }
+                        }
+
+                        result.t_integer = v;
+                    } break;
+                    case FLAGSHIP_TYPE_FLOAT: {
+                        const char *literal = colon;
+                        if(literal) {
+                            literal++;
+                        } else {
+                            adv();
+                            literal = name = *argv;
+                        }
+
+                        char *endptr = NULL;
+                        double v = strtod(literal, &endptr);
+
+                        if(!(endptr && literal != endptr && !*endptr)) {
+                            success = false;
+                            err("invalid float: %s\n", literal);
+
+                            break;
+                        }
+
+                        if(f->s_float.min != f->s_float.max) {
+                            if(
+                                (v >= f->s_float.max) ||
+                                (v < f->s_float.min)
+                            ) {
+                                success = false;
+                                err("float out of range: %f [%f, %f)\n",
+                                    v, f->s_float.min, f->s_float.max);
+
+                                break;
+                            }
+                        }
+
+                        result.t_float = v;
+                    } break;
+                    case FLAGSHIP_TYPE_STRING: {
+                        const char *literal = colon;
+                        if(literal) {
+                            literal++;
+                        } else {
+                            adv();
+                            literal = name = *argv;
+                        }
+
+                        if(f->s_string.valid.ptr) {
+                            bool is_valid = false;
+                            for(unsigned int i = 0; i < f->s_string.valid.len; ++i) {
+                                const char *cmp = NULL;
+                                if(f->s_string.valid.ptr[i]) {
+                                    cmp = flagship_deref(ctx, f->s_string.valid.ptr[i]);
+                                }
+
+                                if(!cmp) {
+                                    continue;
+                                }
+
+                                if(strcmp(literal, cmp) == 0) {
+                                    is_valid = true;
+                                    break;
+                                }
+                            }
+
+                            if(!is_valid) {
+                                success = false;
+                                err("string is not valid: %s\n", literal);
+                                break;
+                            }
+                        }
+
+                        result.t_string = literal;
+                    } break;
+                    case FLAGSHIP_TYPE_ENUM: {
+                        const char *literal = colon;
+                        if(literal) {
+                            literal++;
+                        } else {
+                            adv();
+                            literal = name = *argv;
+                        }
+
+                        int variant = -1;
+
+                        for(unsigned int i = 0; i < f->s_enum.variants.len; ++i) {
+                            struct FlagshipEnumVariant *v = f->s_enum.variants.ptr + i;
+
+                            const char *v_name = flagship_deref(ctx, v->name);
+
+                            if(strcmp(literal, v_name) == 0) {
+                                variant = i;
+                                break;
+                            }
+
+                            char *endptr = NULL;
+                            long integer = strtol(literal, &endptr, 10);
+
+                            if(!(endptr && literal != endptr && !*endptr)) {
+                                continue;
+                            }
+
+                            variant = integer;
+                            break;
+                        }
+
+                        if(variant < 0) {
+                            success = false;
+                            err("enum variant is not valid: %s\n", literal);
+                            break;
+                        }
+
+                        result.t_integer = variant;
+                    } break;
+                }
+
+                if(!success) {
+                    break;
+                }
+
+                // TODO(alicia): remove default flag if it exists!
+                bool push_result = false;
+
+                if(f->is_repeatable) {
+                    push_result = true;
+                } else {
+                    struct FlagshipResult *dst = NULL;
+
+                    for(unsigned int i = 0; i < ctx->results.len; ++i) {
+                        struct FlagshipResult *this_result = ctx->results.ptr + i;
+                        if(
+                            (this_result->mode == result.mode) &&
+                            (this_result->name == result.name)
+                        ) {
+                            dst = this_result;
+                            break;
+                        }
+                    }
+
+                    if(dst) {
+                        memcpy(dst, &result, sizeof(result));
+                    } else {
+                        push_result = true;
+                    }
+                }
+
+                if(push_result) {
+                    flagship_reserve(&ctx->allocator, &ctx->results, 1);
+                    ctx->results.ptr[ctx->results.len++] = result;
+                }
+            }
+        }
+
+        adv();
+    }
+
+    // sort results
+    if(success) {
+        if(ctx->results.len) {
+            qsort(ctx->results.ptr, ctx->results.len,
+                sizeof(ctx->results.ptr[0]), __flagship_result_sort_comp);
+        }
+    } else {
+        if(print_help) {
+            flagship_help_stream(ctx, NULL, true, stream, help_target);
+        }
+    }
+
+    #undef adv
+    #undef err
+    return success;
 }
 
 FLAGSHIP_INLINE
 bool flagship_parse(struct FlagshipContext *ctx, int argc, char** argv, bool print_help) {
     return flagship_parse_streaming_errors(
-        ctx, argc, argv, __flagship_stream_file, stderr, print_help ? stdout : NULL);
+        ctx, argc, argv, __flagship_stream_file, stderr, print_help ? stdout : NULL, print_help);
 }
+
+FLAGSHIP_INLINE
+bool flagship_iter_next(struct FlagshipContext *ctx, struct FlagshipResult *out_result) {
+    unsigned int idx = ctx->iter++;
+    if(idx >= ctx->results.len) {
+        return false;
+    }
+
+    memcpy(out_result, ctx->results.ptr + idx, sizeof(*out_result));
+    return true;
+}
+
+FLAGSHIP_INLINE
+void flagship_iter_reset(struct FlagshipContext *ctx) {
+    ctx->iter = 0;
+}
+
 
 #undef FLAGSHIP_INLINE
 #undef FLAGSHIP_FMTFUNC
