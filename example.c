@@ -154,9 +154,52 @@ int main(int argc, char** argv) {
             flagship_end_mode(&ctx);
         }
 
-        flagship_help_print(&ctx, "pkg", true);
+        if(flagship_parse(&ctx, argc, argv, true)) {
+            printf("flags parsed successfully\n");
 
-        printf("memory allocated: %zu\n", ctx.allocator.sz);
+            struct FlagshipResult f;
+            unsigned int n = 0;
+            while(flagship_iter_next(&ctx, &f)) {
+                printf("flag: %u\n", n++);
+
+                printf(    "  names:    ");
+                for(unsigned int i = 0; i < f.name->len; ++i) {
+                    printf("%s", flagship_deref(&ctx, f.name->ptr[i]));
+                    if((i + 1) >= f.name->len) {
+                        printf("\n");
+                    } else {
+                        printf(", ");
+                    }
+                }
+
+                if(f.was_set) {
+                    printf("  position: %u\n", f.position);
+                } else {
+                    printf("  default value\n");
+                }
+
+                printf(        "  type:     %s\n", flagship_string_from_type(f.type));
+
+                switch(f.type) {
+                    case FLAGSHIP_TYPE_NULL: break;
+                    case FLAGSHIP_TYPE_BOOL: break;
+                    case FLAGSHIP_TYPE_INTEGER:
+                        printf("  value:    %d\n", f.t_integer);
+                        break;
+                    case FLAGSHIP_TYPE_FLOAT:
+                        printf("  value:    %f\n", f.t_float);
+                        break;
+                    case FLAGSHIP_TYPE_STRING:
+                        printf("  value:    '%s'\n", f.t_string);
+                        break;
+                    case FLAGSHIP_TYPE_ENUM:
+                        printf("  value:    %d\n", f.t_enum);
+                        break;
+                }
+            }
+        }
+
+        flagship_help_print(&ctx, "build", true);
 
         flagship_end(&ctx);
     }
