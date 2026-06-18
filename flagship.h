@@ -31,6 +31,8 @@
     #define FLAGSHIP_FMTFUNC(...)
 #endif
 
+struct FlagshipEnumVariant;
+
 /// @brief Flagship Data Types.
 enum FlagshipType {
     /// @brief No data type - Triggers a panic when used, only useful for internal debugging.
@@ -486,30 +488,61 @@ bool flagship_iter_next(struct FlagshipContext *ctx, struct FlagshipResult *out_
 FLAGSHIP_INLINE
 void flagship_iter_reset(struct FlagshipContext *ctx);
 
-// FLAGSHIP_INLINE
-// bool flagship_mode_iter_next(struct FlagshipContext *ctx, int *out_mode);
-//
-// FLAGSHIP_INLINE
-// void flagship_mode_iter_reset(struct FlagshipContext *ctx);
-//
-// FLAGSHIP_INLINE
-// bool flagship_flag_iter_next(struct FlagshipContext *ctx, struct FlagshipResult *out_result);
-//
-// FLAGSHIP_INLINE
-// void flagship_flag_iter_reset(struct FlagshipContext *ctx);
-//
-// FLAGSHIP_INLINE
-// bool flagship_read(
-//     struct FlagshipContext *ctx, struct FlagshipResult *out_result,
-//     FlagshipString mode, FlagshipString flag);
-//
-// FLAGSHIP_INLINE
-// bool flagship_search(
-//     struct FlagshipContext *ctx, struct FlagshipResult *out_result,
-//     const char *mode, const char *flag);
-//
-// FLAGSHIP_INLINE
-// int flagship_last_flag(struct FlagshipContext *ctx);
+/// @brief Search for enum by string name.
+/// @param[in]  ctx               Pointer to context.
+/// @param[in]  mode              Name of mode this enum belongs to.
+/// @param[in]  name              Name of enum.
+/// @param[out] out_variant_count Pointer to write number of variants.
+/// @param[out] out_variants      Pointer to write pointer to variants to.
+/// @return
+///     - @c true  : Enum was found. Pointer to variants is written to @c out_variants.
+///     - @c false : Enum was not found. @c out_variants is NULL.
+FLAGSHIP_INLINE
+bool flagship_enum_search(
+    struct FlagshipContext *ctx, const char *mode, const char *name,
+    unsigned int *out_variant_count, struct FlagshipEnumVariant **out_variants);
+
+/// @brief Search for enum by string name.
+/// @param[in]  ctx               Pointer to context.
+/// @param      mode              Name of mode this enum belongs to.
+/// @param      name              Name of enum.
+/// @param[out] out_variant_count Pointer to write number of variants.
+/// @param[out] out_variants      Pointer to write pointer to variants to.
+/// @return
+///     - @c true  : Enum was found. Pointer to variants is written to @c out_variants.
+///     - @c false : Enum was not found. @c out_variants is NULL.
+FLAGSHIP_INLINE
+bool flagship_enum_get(
+    struct FlagshipContext *ctx, FlagshipString mode, FlagshipString name,
+    unsigned int *out_variant_count, struct FlagshipEnumVariant **out_variants);
+
+/// @brief Search for flag by string name.
+/// @param[in]  ctx         Pointer to context.
+/// @param[in]  mode        Name of mode this flag belongs to.
+/// @param[in]  name        Name of flag.
+/// @param[out] out_count   Pointer to write number of results found.
+/// @param[out] out_results Pointer to write pointer to results to.
+/// @return
+///     - @c true  : Flag was found in results. Pointer to instances is written to @c out_results.
+///     - @c false : Flag was not found in results. @c out_results is NULL.
+FLAGSHIP_INLINE
+bool flagship_search(
+    struct FlagshipContext *ctx, const char *mode, const char *name,
+    unsigned int *out_count, struct FlagshipResult **out_results);
+
+/// @brief Search for flag by string token.
+/// @param[in]  ctx         Pointer to context.
+/// @param      mode        Name of mode this flag belongs to.
+/// @param      name        Name of flag.
+/// @param[out] out_count   Pointer to write number of results found.
+/// @param[out] out_results Pointer to write pointer to results to.
+/// @return
+///     - @c true  : Flag was found in results. Pointer to instances is written to @c out_results.
+///     - @c false : Flag was not found in results. @c out_results is NULL.
+FLAGSHIP_INLINE
+bool flagship_get(
+    struct FlagshipContext *ctx, FlagshipString mode, FlagshipString name,
+    unsigned int *out_count, struct FlagshipResult **out_results);
 
 /// @brief Dereference a string token.
 /// @param[in] ctx    Pointer to context.
@@ -537,6 +570,12 @@ struct FlagshipEnumVariant {
     int            value;
 };
 
+struct __FlagshipBufferEnum {
+    unsigned int                cap;
+    unsigned int                len;
+    struct FlagshipEnumVariant *ptr;
+};
+
 struct __FlagshipBufferChar {
     unsigned int cap;
     unsigned int len;
@@ -559,12 +598,6 @@ struct __FlagshipBufferMode {
     unsigned int         cap;
     unsigned int         len;
     struct FlagshipMode *ptr;
-};
-
-struct __FlagshipBufferEnumVariant {
-    unsigned int                cap;
-    unsigned int                len;
-    struct FlagshipEnumVariant *ptr;
 };
 
 struct __FlagshipBufferResult {
@@ -608,7 +641,7 @@ struct FlagshipFlag {
             struct __FlagshipBufferString valid;
         } s_string;
         struct {
-            struct __FlagshipBufferEnumVariant variants;
+            struct __FlagshipBufferEnum variants;
             int counter;
         } s_enum;
     };
@@ -630,6 +663,7 @@ struct FlagshipContext {
     struct __FlagshipBufferChar   tmp, str;
     struct __FlagshipBufferMode   modes;
     struct __FlagshipBufferResult results;
+    struct __FlagshipBufferResult search;
 
     FlagshipString name, description;
 
@@ -3103,6 +3137,13 @@ bool flagship_parse_streaming_errors(
         }
     }
 
+    if(success) {
+        // allocate search buffer
+        if(ctx->search.cap != ctx->results.len) {
+            flagship_reserve(&ctx->allocator, &ctx->search, ctx->results.len);
+        }
+    }
+
     #undef adv
     #undef err
     return success;
@@ -3130,6 +3171,164 @@ void flagship_iter_reset(struct FlagshipContext *ctx) {
     ctx->iter = 0;
 }
 
+// TODO(alicia): replace string searches with hash searches eventually?
+FLAGSHIP_INLINE
+bool flagship_enum_search(
+    struct FlagshipContext *ctx, const char *mode, const char *name,
+    unsigned int *out_variant_count, struct FlagshipEnumVariant **out_variants
+) {
+    bool found = false;
+
+    for(unsigned int i = 0; i < ctx->modes.len; ++i) {
+        struct FlagshipMode *m = ctx->modes.ptr + i;
+        if(mode) {
+            const char *rmode =
+                (m->names.ptr && m->names.ptr[0]) ? flagship_deref(ctx, m->names.ptr[0]) : NULL;
+
+            if(!rmode || !(strcmp(rmode, mode) == 0)) {
+                continue;
+            }
+        } else {
+            if(m->names.ptr) {
+                if(m->names.ptr[0]) {
+                    continue;
+                }
+            }
+        }
+
+        for(unsigned int j = 0; j < m->flags.len; ++j) {
+            struct FlagshipFlag *f = m->flags.ptr + j;
+
+            if(name) {
+                const char *rname =
+                    (f->names.ptr && f->names.ptr[0]) ? flagship_deref(ctx, f->names.ptr[0]) : NULL;
+
+                if(!rname || !(strcmp(rname, name) == 0)) {
+                    continue;
+                }
+            } else {
+                if(f->names.ptr) {
+                    if(f->names.ptr[0]) {
+                        continue;
+                    }
+                }
+            }
+
+            if(f->type == FLAGSHIP_TYPE_ENUM) {
+                found = true;
+
+                *out_variant_count = f->s_enum.variants.len;
+                *out_variants      = f->s_enum.variants.ptr;
+                break;
+            }
+        }
+
+        if(found) {
+            break;
+        }
+    }
+
+    return found;
+}
+
+FLAGSHIP_INLINE
+bool flagship_enum_get(
+    struct FlagshipContext *ctx, FlagshipString mode, FlagshipString name,
+    unsigned int *out_variant_count, struct FlagshipEnumVariant **out_variants
+) {
+    const char *mode_str, *name_str;
+    mode_str = name_str = NULL;
+
+    if(mode) {
+        mode_str = flagship_deref(ctx, mode);
+    }
+
+    if(name) {
+        name_str = flagship_deref(ctx, name);
+    }
+
+    return flagship_enum_search(ctx, mode_str, name_str, out_variant_count, out_variants);
+}
+
+FLAGSHIP_INLINE
+bool flagship_search(
+    struct FlagshipContext *ctx, const char *mode, const char *name,
+    unsigned int *out_count, struct FlagshipResult **out_results
+) {
+    struct __FlagshipBufferResult *s = &ctx->search;
+
+    s->len = 0;
+    flagship_reserve(&ctx->allocator, s, ctx->results.len);
+
+    bool found = false;
+
+    for(unsigned int i = 0; i < ctx->results.len; ++i) {
+        struct FlagshipResult *r = ctx->results.ptr + i;
+
+        if(mode) {
+            const char *rmode =
+                (r->mode->ptr && r->mode->ptr[0]) ?
+                    flagship_deref(ctx, r->mode->ptr[0]) : NULL;
+
+            if(!rmode || !(strcmp(rmode, mode) == 0)) {
+                continue;
+            }
+        } else {
+            if(r->mode->ptr) {
+                if(r->mode->ptr[0]) {
+                    continue;
+                }
+            }
+        }
+
+        if(name) {
+            const char *rname =
+                (r->name->ptr && r->name->ptr[0]) ?
+                    flagship_deref(ctx, r->name->ptr[0]) : NULL;
+
+            if(!rname || !(strcmp(rname, name) == 0)) {
+                continue;
+            }
+        } else {
+            if(r->name->ptr) {
+                if(r->name->ptr[0]) {
+                    continue;
+                }
+            }
+        }
+
+        found = true;
+        s->ptr[s->len++] = *r;
+    }
+
+    if(found) {
+        *out_count   = s->len;
+        *out_results = s->ptr;
+    } else {
+        *out_count   = 0;
+        *out_results = NULL;
+    }
+    return found;
+}
+
+FLAGSHIP_INLINE
+bool flagship_get(
+    struct FlagshipContext *ctx, FlagshipString mode, FlagshipString name,
+    unsigned int *out_count, struct FlagshipResult **out_results
+) {
+    const char *mode_str, *name_str;
+    mode_str = name_str = NULL;
+
+    if(mode) {
+        mode_str = flagship_deref(ctx, mode);
+    }
+
+    if(name) {
+        name_str = flagship_deref(ctx, name);
+    }
+
+    return flagship_search(ctx, mode_str, name_str, out_count, out_results);
+}
 
 #undef FLAGSHIP_INLINE
 #undef FLAGSHIP_FMTFUNC
