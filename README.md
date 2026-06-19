@@ -2,6 +2,8 @@
 
 Header-only library for parsing command-line arguments.
 
+Generate documentation using provided `docs.sh` for more info.
+
 ## Usage
 
 ```c
@@ -31,15 +33,8 @@ int main(int argc, char** argv) {
             flagship_name(&ctx, "some-mode");
             // subsequent calls will give this mode an alias
             flagship_name(&ctx, "some-mode-alias");
-            // set the id for this mode.
-            // by default, modes are given id's in the order
-            // that they're created, starting from zero.
-            flagship_id(&ctx, 10);
-            // flag which tells flagship that changing to a different mode
-            // after encountering this mode is not allowed.
-            flagship_flag(&ctx, FLAGSHIP_MODE_UNIQUE, true);
 
-            // set the description of the program
+            // set the description of the mode
             flagship_description(&ctx, "this is a mode");
 
             // create a new flag
@@ -47,12 +42,15 @@ int main(int argc, char** argv) {
                 // set name of flag
                 flagship_name(&ctx, "some-flag");
 
+                // set description of flag
+                flagship_description(&ctx, "this is a flag");
+
                 // finish this flag
                 flagship_end_flag(&ctx);
             }
 
             // you can also go back to an existing flag/mode to edit it.
-            // always uses the first name assigned to the flag, or null
+            // always uses the first name assigned to the flag, or null if it's nameless
             flagship_begin_flag_existing(&ctx, FLAGSHIP_TYPE_BOOL, "some-flag"); {
                 // remember to end
                 flagship_end_flag(&ctx);
@@ -63,26 +61,23 @@ int main(int argc, char** argv) {
         }
 
         // parse flags
-        if(!flagship_parse(&ctx, argc, argv)) {
+        if(!flagship_parse(&ctx, argc, argv, true)) {
             return 1;
         }
 
         // iterate through all parsed modes
-        int mode = 0;
-        while(flagship_mode_next(&ctx, &mode)) {
-            // iterate through flags, in order that they were passed in
-            struct FlagshipResult result = {0};
-            while(flagship_flag_next(&ctx, &result)) { // false if no more flags to read
-            }
-            // iterating through flags can be reset
-            flagship_flag_iterator_reset(&ctx);
+        struct FlagshipResult r;
+        while(flagship_iter_next(&ctx, &r)) {
+            printf(
+                "mode: %s, flag: %s\n",
+                flagship_result_mode(&ctx, &r), flagship_result_name(&ctx, &r));
         }
-        // iterating through modes can be reset
-        flagship_mode_iterator_reset(&ctx);
+        // iterator can be reset
+        flagship_iter_reset(&ctx);
 
         // you can also just read flags directly
         struct FlagshipResult result = {0};
-        if(flagship_read(&ctx, "mode", "flag", &result)) {
+        if(flagship_search(&ctx, "mode", "flag", &result)) {
             // do something with result
         } // false means that flag doesn't exist in schema
 
