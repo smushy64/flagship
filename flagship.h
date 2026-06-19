@@ -154,17 +154,17 @@ void flagship_begin_mode(struct FlagshipContext *ctx);
 /// @param[in] ctx Pointer to context.
 /// @param[in] fmt Name of mode to search for - format string.
 /// @param[in] va  Variadic format string arguments.
-FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 0)
+FLAGSHIP_INLINE
 void flagship_begin_mode_existing_search_va(
-    struct FlagshipContext *ctx, const char *fmt, va_list va);
+    struct FlagshipContext *ctx, const char *fmt, va_list va) FLAGSHIP_FMTFUNC(2, 0);
 
 /// @brief Search for existing mode and modify it.
 /// @warning This will panic if mode doesn't already exist.
 /// @param[in] ctx Pointer to context.
 /// @param[in] fmt Name of mode to search for - format string.
 /// @param     ... Format string arguments.
-FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 3)
-void flagship_begin_mode_existing_search(struct FlagshipContext *ctx, const char *fmt, ...);
+FLAGSHIP_INLINE
+void flagship_begin_mode_existing_search(struct FlagshipContext *ctx, const char *fmt, ...) FLAGSHIP_FMTFUNC(2, 3);
 
 /// @brief Modify existing mode.
 /// @warning This will panic if mode doesn't actually exist.
@@ -189,17 +189,17 @@ void flagship_begin_flag(struct FlagshipContext *ctx, enum FlagshipType type);
 /// @param[in] ctx Pointer to context.
 /// @param[in] fmt Name of flag to search for - format string.
 /// @param[in] va  Variadic format string arguments.
-FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 0)
+FLAGSHIP_INLINE
 void flagship_begin_flag_existing_search_va(
-    struct FlagshipContext *ctx, const char *fmt, va_list va);
+    struct FlagshipContext *ctx, const char *fmt, va_list va) FLAGSHIP_FMTFUNC(2, 0);
 
 /// @brief Search for existing flag and modify it.
 /// @warning This will panic if flag doesn't already exist.
 /// @param[in] ctx Pointer to context.
 /// @param[in] fmt Name of flag to search for - format string.
 /// @param     ... Format string arguments.
-FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 3)
-void flagship_begin_flag_existing_search(struct FlagshipContext *ctx, const char *fmt, ...);
+FLAGSHIP_INLINE
+void flagship_begin_flag_existing_search(struct FlagshipContext *ctx, const char *fmt, ...) FLAGSHIP_FMTFUNC(2, 3);
 
 /// @brief Modify existing flag.
 /// @warning This will panic if flag doesn't actually exist.
@@ -222,8 +222,8 @@ void flagship_end_flag(struct FlagshipContext *ctx);
 /// @param[in] fmt Name to add. This can be a format string.
 /// @param[in] va  Variadic arguments to format string.
 /// @return String token.
-FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 0)
-FlagshipString flagship_name_va(struct FlagshipContext *ctx, const char *fmt, va_list va);
+FLAGSHIP_INLINE
+FlagshipString flagship_name_va(struct FlagshipContext *ctx, const char *fmt, va_list va) FLAGSHIP_FMTFUNC(2, 0);
 
 /// @brief Set name or add an alias.
 /// @details
@@ -234,8 +234,8 @@ FlagshipString flagship_name_va(struct FlagshipContext *ctx, const char *fmt, va
 /// @param[in] fmt Name to add. This can be a format string.
 /// @param     ... Arguments to format string.
 /// @return String token.
-FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 3)
-FlagshipString flagship_name(struct FlagshipContext *ctx, const char *fmt, ...);
+FLAGSHIP_INLINE
+FlagshipString flagship_name(struct FlagshipContext *ctx, const char *fmt, ...) FLAGSHIP_FMTFUNC(2, 3);
 
 /// @brief Set description.
 /// @details
@@ -246,8 +246,8 @@ FlagshipString flagship_name(struct FlagshipContext *ctx, const char *fmt, ...);
 /// @param[in] fmt Description. This can be a format string.
 /// @param[in] va  Variadic arguments to format string.
 /// @return String token.
-FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 0)
-FlagshipString flagship_description_va(struct FlagshipContext *ctx, const char *fmt, va_list va);
+FLAGSHIP_INLINE
+FlagshipString flagship_description_va(struct FlagshipContext *ctx, const char *fmt, va_list va) FLAGSHIP_FMTFUNC(2, 0);
 
 /// @brief Set description.
 /// @details
@@ -258,8 +258,8 @@ FlagshipString flagship_description_va(struct FlagshipContext *ctx, const char *
 /// @param[in] fmt Description. This can be a format string.
 /// @param     ... Arguments to format string.
 /// @brief String token.
-FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 3)
-FlagshipString flagship_description(struct FlagshipContext *ctx, const char *fmt, ...);
+FLAGSHIP_INLINE
+FlagshipString flagship_description(struct FlagshipContext *ctx, const char *fmt, ...) FLAGSHIP_FMTFUNC(2, 3);
 
 /// @brief Set note.
 /// @details
@@ -270,8 +270,8 @@ FlagshipString flagship_description(struct FlagshipContext *ctx, const char *fmt
 /// @param[in] fmt Description. This can be a format string.
 /// @param[in] va  Variadic arguments to format string.
 /// @return String token.
-FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 0)
-FlagshipString flagship_note_va(struct FlagshipContext *ctx, const char *fmt, va_list va);
+FLAGSHIP_INLINE
+FlagshipString flagship_note_va(struct FlagshipContext *ctx, const char *fmt, va_list va) FLAGSHIP_FMTFUNC(2, 0);
 
 /// @brief Set note.
 /// @details
@@ -282,8 +282,8 @@ FlagshipString flagship_note_va(struct FlagshipContext *ctx, const char *fmt, va
 /// @param[in] fmt Description. This can be a format string.
 /// @param     ... Arguments to format string.
 /// @brief String token.
-FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 3)
-FlagshipString flagship_note(struct FlagshipContext *ctx, const char *fmt, ...);
+FLAGSHIP_INLINE
+FlagshipString flagship_note(struct FlagshipContext *ctx, const char *fmt, ...) FLAGSHIP_FMTFUNC(2, 3);
 
 /// @brief Set warning.
 /// @details
@@ -294,8 +294,8 @@ FlagshipString flagship_note(struct FlagshipContext *ctx, const char *fmt, ...);
 /// @param[in] fmt Description. This can be a format string.
 /// @param[in] va  Variadic arguments to format string.
 /// @return String token.
-FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 0)
-FlagshipString flagship_warning_va(struct FlagshipContext *ctx, const char *fmt, va_list va);
+FLAGSHIP_INLINE
+FlagshipString flagship_warning_va(struct FlagshipContext *ctx, const char *fmt, va_list va) FLAGSHIP_FMTFUNC(2, 0);
 
 /// @brief Set warning.
 /// @details
@@ -306,24 +306,24 @@ FlagshipString flagship_warning_va(struct FlagshipContext *ctx, const char *fmt,
 /// @param[in] fmt Description. This can be a format string.
 /// @param     ... Arguments to format string.
 /// @brief String token.
-FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 3)
-FlagshipString flagship_warning(struct FlagshipContext *ctx, const char *fmt, ...);
+FLAGSHIP_INLINE
+FlagshipString flagship_warning(struct FlagshipContext *ctx, const char *fmt, ...) FLAGSHIP_FMTFUNC(2, 3);
 
 /// @brief Set default value.
 /// @param[in] ctx Pointer to context.
 /// @param[in] fmt String representation of default value. This can be a format string.
 /// @param[in] va  Variadic format string arguments.
 /// @return String token.
-FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 0)
-FlagshipString flagship_default_va(struct FlagshipContext *ctx, const char *fmt, va_list va);
+FLAGSHIP_INLINE
+FlagshipString flagship_default_va(struct FlagshipContext *ctx, const char *fmt, va_list va) FLAGSHIP_FMTFUNC(2, 0);
 
 /// @brief Set default value.
 /// @param[in] ctx Pointer to context.
 /// @param[in] fmt String representation of default value. This can be a format string.
 /// @param     ... Format string arguments.
 /// @return String token.
-FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 3)
-FlagshipString flagship_default(struct FlagshipContext *ctx, const char *fmt, ...);
+FLAGSHIP_INLINE
+FlagshipString flagship_default(struct FlagshipContext *ctx, const char *fmt, ...) FLAGSHIP_FMTFUNC(2, 3);
 
 /// @brief Set if flag or mode is repeatable.
 /// @param[in] ctx   Pointer to context.
@@ -359,14 +359,14 @@ void flagship_bool_is_toggle(struct FlagshipContext *ctx, bool value);
 /// @brief Set valid range for integer flag.
 /// @param[in] ctx           Pointer to context.
 /// @param     min_inclusive Minimum value (inclusive).
-/// @param     max_inclusive Maximum value (exclusive).
+/// @param     max_exclusive Maximum value (exclusive).
 FLAGSHIP_INLINE
 void flagship_integer_range(struct FlagshipContext *ctx, int min_inclusive, int max_exclusive);
 
 /// @brief Set valid range for float flag.
 /// @param[in] ctx           Pointer to context.
 /// @param     min_inclusive Minimum value (inclusive).
-/// @param     max_inclusive Maximum value (exclusive).
+/// @param     max_exclusive Maximum value (exclusive).
 FLAGSHIP_INLINE
 void flagship_float_range(struct FlagshipContext *ctx, float min_inclusive, float max_exclusive);
 
@@ -375,16 +375,16 @@ void flagship_float_range(struct FlagshipContext *ctx, float min_inclusive, floa
 /// @param[in] fmt Format string.
 /// @param[in] va  Variadic arguments for format string.
 /// @return String token.
-FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 0)
-FlagshipString flagship_string_valid_va(struct FlagshipContext *ctx, const char *fmt, va_list va);
+FLAGSHIP_INLINE
+FlagshipString flagship_string_valid_va(struct FlagshipContext *ctx, const char *fmt, va_list va) FLAGSHIP_FMTFUNC(2, 0);
 
 /// @brief Add valid string for string flag.
 /// @param[in] ctx Pointer to context.
 /// @param[in] fmt Format string.
 /// @param     ... Arguments for format string.
 /// @return String token.
-FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 3)
-FlagshipString flagship_string_valid(struct FlagshipContext *ctx, const char *fmt, ...);
+FLAGSHIP_INLINE
+FlagshipString flagship_string_valid(struct FlagshipContext *ctx, const char *fmt, ...) FLAGSHIP_FMTFUNC(2, 3);
 
 /// @brief Set start to enum variant counter.
 /// @param[in] ctx   Pointer to context.
@@ -397,16 +397,16 @@ void flagship_enum_variant_start(struct FlagshipContext *ctx, int start);
 /// @param[in] fmt Format string.
 /// @param[in] va  Variadic format string arguments.
 /// @return String token.
-FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 0)
-FlagshipString flagship_enum_variant_va(struct FlagshipContext *ctx, const char *fmt, va_list va);
+FLAGSHIP_INLINE
+FlagshipString flagship_enum_variant_va(struct FlagshipContext *ctx, const char *fmt, va_list va) FLAGSHIP_FMTFUNC(2, 0);
 
 /// @brief Add enum variant to enum flag.
 /// @param[in] ctx Pointer to context.
 /// @param[in] fmt Format string.
 /// @param     ... Format string arguments.
 /// @return String token.
-FLAGSHIP_INLINE FLAGSHIP_FMTFUNC(2, 3)
-FlagshipString flagship_enum_variant(struct FlagshipContext *ctx, const char *fmt, ...);
+FLAGSHIP_INLINE
+FlagshipString flagship_enum_variant(struct FlagshipContext *ctx, const char *fmt, ...) FLAGSHIP_FMTFUNC(2, 3);
 
 /// @brief Copy flag to current mode.
 /// @param[in] ctx  Pointer to context.
@@ -847,17 +847,16 @@ void __flagship_reserve(
 }
 
 FLAGSHIP_INLINE
-const char* __FLAGSHIP_TYPE_STRINGS[] = {
-    "null",
-    "bool",
-    "integer",
-    "float",
-    "string",
-    "enum",
-};
-
-FLAGSHIP_INLINE
 const char* flagship_string_from_type(enum FlagshipType t) {
+    const char* __FLAGSHIP_TYPE_STRINGS[] = {
+        "null",
+        "bool",
+        "integer",
+        "float",
+        "string",
+        "enum",
+    };
+
     if((t < 0) || (t > FLAGSHIP_TYPE_LAST)) {
         return NULL;
     }
@@ -865,6 +864,15 @@ const char* flagship_string_from_type(enum FlagshipType t) {
 }
 FLAGSHIP_INLINE
 enum FlagshipType flagship_type_from_string(const char* str, const char** endptr) {
+    const char* __FLAGSHIP_TYPE_STRINGS[] = {
+        "null",
+        "bool",
+        "integer",
+        "float",
+        "string",
+        "enum",
+    };
+
     for(int t = 1; t < (int)(FLAGSHIP_TYPE_LAST + 1); ++t) {
         const char* tstr   = __FLAGSHIP_TYPE_STRINGS[t];
         const char* needle = strstr(str, tstr);
