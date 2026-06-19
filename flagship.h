@@ -488,6 +488,17 @@ bool flagship_iter_next(struct FlagshipContext *ctx, struct FlagshipResult *out_
 FLAGSHIP_INLINE
 void flagship_iter_reset(struct FlagshipContext *ctx);
 
+/// @brief Get last mode during parsing.
+/// @param[in]  ctx               Pointer to context.
+/// @param[out] out_mode          Pointer to write mode to.
+/// @param[out] opt_out_mode_name Pointer to write mode name to.
+/// @return
+///     - @c true  : Context is modal and last mode is written to @c out_mode.
+///     - @c false : Context is not modal, @c out_mode is NULL.
+FLAGSHIP_INLINE
+bool flagship_get_last_mode(
+    struct FlagshipContext *ctx, int *out_mode, const char **opt_out_mode_name);
+
 /// @brief Search for enum by string name.
 /// @param[in]  ctx               Pointer to context.
 /// @param[in]  mode              Name of mode this enum belongs to.
@@ -517,6 +528,32 @@ bool flagship_enum_get(
     unsigned int *out_variant_count, struct FlagshipEnumVariant **out_variants);
 
 /// @brief Search for flag by string name.
+/// @param[in]  ctx        Pointer to context.
+/// @param[in]  mode       Name of mode this flag belongs to.
+/// @param[in]  name       Name of flag.
+/// @param[out] out_result Pointer to write pointer to result to.
+/// @return
+///     - @c true  : Flag was found in results. Instance is written to @c out_results.
+///     - @c false : Flag was not found in results.
+FLAGSHIP_INLINE
+bool flagship_search(
+    struct FlagshipContext *ctx, const char *mode, const char *name,
+    struct FlagshipResult *out_result);
+
+/// @brief Search for flag by string token.
+/// @param[in]  ctx        Pointer to context.
+/// @param      mode       Name of mode this flag belongs to.
+/// @param      name       Name of flag.
+/// @param[out] out_result Pointer to write pointer to result to.
+/// @return
+///     - @c true  : Flag was found in results. Instance is written to @c out_results.
+///     - @c false : Flag was not found in results.
+FLAGSHIP_INLINE
+bool flagship_get(
+    struct FlagshipContext *ctx, FlagshipString mode, FlagshipString name,
+    struct FlagshipResult *out_result);
+
+/// @brief Search for flag by string name.
 /// @param[in]  ctx         Pointer to context.
 /// @param[in]  mode        Name of mode this flag belongs to.
 /// @param[in]  name        Name of flag.
@@ -526,7 +563,7 @@ bool flagship_enum_get(
 ///     - @c true  : Flag was found in results. Pointer to instances is written to @c out_results.
 ///     - @c false : Flag was not found in results. @c out_results is NULL.
 FLAGSHIP_INLINE
-bool flagship_search(
+bool flagship_search_repeatable(
     struct FlagshipContext *ctx, const char *mode, const char *name,
     unsigned int *out_count, struct FlagshipResult **out_results);
 
@@ -540,9 +577,29 @@ bool flagship_search(
 ///     - @c true  : Flag was found in results. Pointer to instances is written to @c out_results.
 ///     - @c false : Flag was not found in results. @c out_results is NULL.
 FLAGSHIP_INLINE
-bool flagship_get(
+bool flagship_get_repeatable(
     struct FlagshipContext *ctx, FlagshipString mode, FlagshipString name,
     unsigned int *out_count, struct FlagshipResult **out_results);
+
+/// @brief Get name of mode that result belongs to.
+/// @param[in] ctx    Pointer to context.
+/// @param[in] result Pointer to result to get mode name of.
+/// @return Name of mode. Returns NULL if mode is nameless.
+FLAGSHIP_INLINE
+const char *flagship_result_mode(struct FlagshipContext *ctx, struct FlagshipResult *result);
+
+/// @brief Get name of result flag.
+/// @param[in] ctx    Pointer to context.
+/// @param[in] result Pointer to result to get flag name of.
+/// @return Name of flag. Returns NULL if mode is nameless.
+FLAGSHIP_INLINE
+const char *flagship_result_name(struct FlagshipContext *ctx, struct FlagshipResult *result);
+
+/// @brief Sort results in order of appearance in arguments.
+/// @param n   Number of results.
+/// @param[in] results Pointer to results.
+FLAGSHIP_INLINE
+void flagship_sort(size_t n, struct FlagshipResult *results);
 
 /// @brief Dereference a string token.
 /// @param[in] ctx    Pointer to context.
@@ -562,6 +619,12 @@ const char* flagship_string_from_type(enum FlagshipType t);
 /// @return Flagship type or FLAGSHIP_TYPE_NULL if string is invalid.
 FLAGSHIP_INLINE
 enum FlagshipType flagship_type_from_string(const char* str, const char** endptr);
+
+/// @brief Get last index of last argument read.
+/// @param[in] ctx Pointer to context.
+/// @return Index of last argument.
+FLAGSHIP_INLINE
+int flagship_end_position(struct FlagshipContext *ctx);
 
 // NOTE(alicia): internal -
 
@@ -653,8 +716,9 @@ struct FlagshipMode {
 
     FlagshipString description, note, warning;
 
-    bool is_repeatable  : 1;
-    bool is_terminating : 1;
+    bool is_repeatable          : 1;
+    bool is_terminating         : 1;
+    bool __initialized_defaults : 1;
 };
 
 struct FlagshipContext {
@@ -669,9 +733,10 @@ struct FlagshipContext {
 
     struct {
         int mode, flag;
-    } current;
+    } current, current_parsing;
 
     unsigned int iter;
+    int          last_argument;
 };
 
 #define flagship_reset_cbuf(cbuf) \
@@ -768,10 +833,11 @@ void __flagship_reserve(
     } else {
         size_t sz = minimum;
         sz = sz < 16 ? 16 : sz;
+        unsigned int new_cap = sz;
         sz = stride * sz;
 
         *out_ptr = flagship_alloc(a, sz);
-        *out_cap = sz;
+        *out_cap = new_cap;
     }
 }
 
@@ -959,7 +1025,10 @@ void flagship_begin_with_allocator(
     flagship_reset_cbuf(&ctx->str);
     flagship_reset_cbuf(&ctx->tmp);
 
-    ctx->current.mode = ctx->current.flag = -1;
+    ctx->current.mode =
+        ctx->current.flag         =
+        ctx->current_parsing.mode =
+        ctx->current_parsing.flag = -1;
 }
 
 FLAGSHIP_INLINE
@@ -1942,6 +2011,12 @@ void flagship_end(struct FlagshipContext *ctx) {
             sizeof(ctx->results.ptr[0]) * ctx->results.cap,
             ctx->allocator.ctx);
     }
+    if(ctx->search.ptr) {
+        ctx->allocator.free(
+            ctx->search.ptr,
+            sizeof(ctx->search.ptr[0]) * ctx->search.cap,
+            ctx->allocator.ctx);
+    }
 
     // reset context
     memset(ctx, 0, sizeof(*ctx));
@@ -2103,31 +2178,39 @@ size_t flagship_help_stream(
 
     is_modal = flagship_is_modal(ctx);
 
-    struct FlagshipMode *mode = ctx->modes.ptr;
-    if(mode_name) {
-        for(unsigned int i = 0; i < ctx->modes.len; ++i) {
-            struct FlagshipMode *current_mode = ctx->modes.ptr + i;
+    struct FlagshipMode *mode = NULL;
+    if(is_modal) {
+        if(mode_name) {
+            for(unsigned int i = 0; i < ctx->modes.len; ++i) {
+                struct FlagshipMode *current_mode = ctx->modes.ptr + i;
 
-            if(!current_mode->names.ptr || !current_mode->names.ptr[0]) {
-                continue;
+                if(!current_mode->names.ptr || !current_mode->names.ptr[0]) {
+                    continue;
+                }
+
+                const char *current_name = flagship_deref(ctx, current_mode->names.ptr[0]);
+
+                if(strcmp(mode_name, current_name) == 0) {
+                    mode = current_mode;
+                    break;
+                }
             }
+        } else {
+            for(unsigned int i = 0; i < ctx->modes.len; ++i) {
+                struct FlagshipMode *current_mode = ctx->modes.ptr + i;
 
-            const char *current_name = flagship_deref(ctx, current_mode->names.ptr[0]);
-
-            if(strcmp(mode_name, current_name) == 0) {
-                mode = current_mode;
-                break;
+                if(!current_mode->names.ptr || !current_mode->names.ptr[0]) {
+                    mode = current_mode;
+                    break;
+                }
             }
         }
     } else {
-        for(unsigned int i = 0; i < ctx->modes.len; ++i) {
-            struct FlagshipMode *current_mode = ctx->modes.ptr + i;
+        mode = ctx->modes.ptr;
+    }
 
-            if(!current_mode->names.ptr || !current_mode->names.ptr[0]) {
-                mode = current_mode;
-                break;
-            }
-        }
+    if(!mode) {
+        return result;
     }
 
     if(ctx->description) {
@@ -2557,6 +2640,46 @@ int __flagship_result_sort_comp(const void *_lhs, const void *_rhs) {
 }
 
 FLAGSHIP_INLINE
+void __flagship_initialize_defaults(struct FlagshipContext *ctx, struct FlagshipMode *m) {
+    struct FlagshipResult f;
+    for(unsigned int i = 0; i < m->flags.len; ++i) {
+        struct FlagshipFlag *flag = m->flags.ptr + i;
+        if(!flag->has_default) {
+            continue;
+        }
+
+        memset(&f, 0, sizeof(f));
+
+        f.mode    = &m->names;
+        f.name    = &flag->names;
+        f.type    = flag->type;
+
+        switch(flag->type) {
+            case FLAGSHIP_TYPE_NULL: break;
+            case FLAGSHIP_TYPE_BOOL:
+                f.t_bool = flag->t_bool_default;
+                break;
+            case FLAGSHIP_TYPE_INTEGER:
+                f.t_integer = flag->t_integer_default;
+                break;
+            case FLAGSHIP_TYPE_FLOAT:
+                f.t_float = flag->t_float_default;
+                break;
+            case FLAGSHIP_TYPE_STRING:
+                f.t_string = flagship_deref(ctx, flag->t_string_default);
+                break;
+            case FLAGSHIP_TYPE_ENUM:
+                f.t_enum = flag->t_enum_default;
+                break;
+        }
+
+        flagship_reserve(&ctx->allocator, &ctx->results, 1);
+        ctx->results.ptr[ctx->results.len++] = f;
+    }
+    m->__initialized_defaults = true;
+}
+
+FLAGSHIP_INLINE
 bool flagship_parse_streaming_errors(
     struct FlagshipContext *ctx, int argc, char** argv,
     FlagshipStreamFn *stream, void *error_target, void *help_target,
@@ -2580,12 +2703,8 @@ bool flagship_parse_streaming_errors(
 
     int total_argc = argc;
 
-    struct FlagshipResult f;
-    memset(&f, 0, sizeof(f));
-
-    // TODO(alicia): add default flags!
-
-    while(argc) {
+    bool is_terminated = false;
+    while(argc && !is_terminated) {
         if(argc == total_argc) {
             adv();
         }
@@ -2609,7 +2728,7 @@ bool flagship_parse_streaming_errors(
                             const char *mode_name = flagship_deref(ctx, m->names.ptr[j]);
 
                             if(strcmp(arg, mode_name) == 0) {
-                                mode = i;
+                                ctx->current_parsing.mode = mode = i;
                                 break;
                             }
                         }
@@ -2621,6 +2740,9 @@ bool flagship_parse_streaming_errors(
 
                     if(mode >= 0) {
                         adv();
+                        if(!ctx->modes.ptr[mode].__initialized_defaults) {
+                            __flagship_initialize_defaults(ctx, ctx->modes.ptr + mode);
+                        }
                         continue;
                     }
                 }
@@ -2649,6 +2771,10 @@ bool flagship_parse_streaming_errors(
         }
 
         struct FlagshipMode *m = ctx->modes.ptr + mode;
+
+        if(!m->__initialized_defaults) {
+            __flagship_initialize_defaults(ctx, m);
+        }
 
         /* parse flag */ {
             // search for flag name
@@ -2702,15 +2828,22 @@ bool flagship_parse_streaming_errors(
 
                 // now that we know what type of nameless flag
                 // to search for, search for nameless + valid type
-
+                
                 struct FlagshipFlag *f = NULL;
 
                 for(unsigned int i = 0; i < m->flags.len; ++i) {
                     struct FlagshipFlag *current = m->flags.ptr + i;
 
                     if(!current->names.ptr || !current->names.ptr[0]) {
-                        if(current->type == type) {
-                            f = current;
+                        if(
+                            current->type == type ||
+                            // NOTE(alicia): string and enum are treated as the same type
+                            // when the flag is nameless
+                            (type == FLAGSHIP_TYPE_STRING ?
+                                (current->type == FLAGSHIP_TYPE_ENUM) : false)
+                        ) {
+                            f    = current;
+                            type = f->type;
                             break;
                         }
                     }
@@ -2849,6 +2982,11 @@ bool flagship_parse_streaming_errors(
                 if(push_result) {
                     flagship_reserve(&ctx->allocator, &ctx->results, 1);
                     ctx->results.ptr[ctx->results.len++] = result;
+                }
+
+                if(f->is_terminating) {
+                    is_terminated = true;
+                    break;
                 }
             } else {
                 // search for flag name
@@ -3089,7 +3227,6 @@ bool flagship_parse_streaming_errors(
                     break;
                 }
 
-                // TODO(alicia): remove default flag if it exists!
                 bool push_result = false;
 
                 if(f->is_repeatable) {
@@ -3119,6 +3256,11 @@ bool flagship_parse_streaming_errors(
                     flagship_reserve(&ctx->allocator, &ctx->results, 1);
                     ctx->results.ptr[ctx->results.len++] = result;
                 }
+
+                if(f->is_terminating) {
+                    is_terminated = true;
+                    break;
+                }
             }
         }
 
@@ -3141,6 +3283,12 @@ bool flagship_parse_streaming_errors(
         // allocate search buffer
         if(ctx->search.cap != ctx->results.len) {
             flagship_reserve(&ctx->allocator, &ctx->search, ctx->results.len);
+        }
+
+        // store last argument index
+        ctx->last_argument = (total_argc - argc) + 1;
+        if(ctx->last_argument > total_argc) {
+            ctx->last_argument = total_argc;
         }
     }
 
@@ -3169,6 +3317,24 @@ bool flagship_iter_next(struct FlagshipContext *ctx, struct FlagshipResult *out_
 FLAGSHIP_INLINE
 void flagship_iter_reset(struct FlagshipContext *ctx) {
     ctx->iter = 0;
+}
+
+FLAGSHIP_INLINE
+bool flagship_get_last_mode(
+    struct FlagshipContext *ctx, int *out_mode, const char **opt_out_mode_name
+) {
+    if(ctx->current_parsing.mode < 0) {
+        return false;
+    }
+
+    struct FlagshipMode *m = ctx->modes.ptr + ctx->current_parsing.mode;
+
+    *out_mode = ctx->current_parsing.mode;
+
+    if(opt_out_mode_name) {
+        *opt_out_mode_name = m->names.ptr ? flagship_deref(ctx, m->names.ptr[0]) : "";
+    }
+    return true;
 }
 
 // TODO(alicia): replace string searches with hash searches eventually?
@@ -3253,6 +3419,36 @@ bool flagship_enum_get(
 FLAGSHIP_INLINE
 bool flagship_search(
     struct FlagshipContext *ctx, const char *mode, const char *name,
+    struct FlagshipResult *out_result
+) {
+    unsigned int count = 0;
+    struct FlagshipResult *results = NULL;
+    bool result = flagship_search_repeatable(ctx, mode, name, &count, &results);
+
+    if(result && out_result) {
+        *out_result = results[0];
+    }
+    return result;
+}
+
+FLAGSHIP_INLINE
+bool flagship_get(
+    struct FlagshipContext *ctx, FlagshipString mode, FlagshipString name,
+    struct FlagshipResult *out_result
+) {
+    unsigned int count = 0;
+    struct FlagshipResult *results = NULL;
+    bool result = flagship_get_repeatable(ctx, mode, name, &count, &results);
+
+    if(result && out_result) {
+        *out_result = results[0];
+    }
+    return result;
+}
+
+FLAGSHIP_INLINE
+bool flagship_search_repeatable(
+    struct FlagshipContext *ctx, const char *mode, const char *name,
     unsigned int *out_count, struct FlagshipResult **out_results
 ) {
     struct __FlagshipBufferResult *s = &ctx->search;
@@ -3312,7 +3508,7 @@ bool flagship_search(
 }
 
 FLAGSHIP_INLINE
-bool flagship_get(
+bool flagship_get_repeatable(
     struct FlagshipContext *ctx, FlagshipString mode, FlagshipString name,
     unsigned int *out_count, struct FlagshipResult **out_results
 ) {
@@ -3327,7 +3523,34 @@ bool flagship_get(
         name_str = flagship_deref(ctx, name);
     }
 
-    return flagship_search(ctx, mode_str, name_str, out_count, out_results);
+    return flagship_search_repeatable(ctx, mode_str, name_str, out_count, out_results);
+}
+
+FLAGSHIP_INLINE
+const char *flagship_result_mode(struct FlagshipContext *ctx, struct FlagshipResult *result) {
+    if(result->mode->ptr && result->mode->ptr[0]) {
+        return flagship_deref(ctx, result->mode->ptr[0]);
+    }
+    return NULL;
+}
+
+FLAGSHIP_INLINE
+const char *flagship_result_name(struct FlagshipContext *ctx, struct FlagshipResult *result) {
+    if(result->name->ptr && result->name->ptr[0]) {
+        return flagship_deref(ctx, result->name->ptr[0]);
+    }
+    return NULL;
+}
+
+
+FLAGSHIP_INLINE
+void flagship_sort(size_t n, struct FlagshipResult *results) {
+    qsort(results, n, sizeof(*results), __flagship_result_sort_comp);
+}
+
+FLAGSHIP_INLINE
+int flagship_end_position(struct FlagshipContext *ctx) {
+    return ctx->last_argument;
 }
 
 #undef FLAGSHIP_INLINE
