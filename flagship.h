@@ -742,6 +742,7 @@ struct FlagshipContext {
 #define flagship_reset_cbuf(cbuf) \
     (cbuf)->len = 1
 
+FLAGSHIP_INLINE
 void *__flagship_alloc(struct FlagshipAllocator *a, size_t sz) {
     void *result = a->alloc(sz, a->ctx);
 
@@ -752,6 +753,7 @@ void *__flagship_alloc(struct FlagshipAllocator *a, size_t sz) {
     return result;
 }
 
+FLAGSHIP_INLINE
 void *__flagship_realloc_(struct FlagshipAllocator *a, void *p, size_t osz, size_t nsz) {
     if(a->realloc) {
         return a->realloc(p, osz, nsz, a->ctx);
@@ -764,6 +766,7 @@ void *__flagship_realloc_(struct FlagshipAllocator *a, void *p, size_t osz, size
     }
 }
 
+FLAGSHIP_INLINE
 void *__flagship_realloc(
     struct FlagshipAllocator *a, void *p, size_t oldsz, size_t newsz
 ) {
@@ -785,6 +788,7 @@ void *__flagship_realloc(
     return result;
 }
 
+FLAGSHIP_INLINE
 void __flagship_free(struct FlagshipAllocator *a, void *p, size_t sz) {
     if(p && sz) {
         a->free(p, sz, a->ctx);
@@ -811,6 +815,7 @@ void __flagship_free(struct FlagshipAllocator *a, void *p, size_t sz) {
     } \
 } while(0)
 
+FLAGSHIP_INLINE
 void __flagship_reserve(
     struct FlagshipAllocator *a,
     size_t stride,
@@ -841,6 +846,7 @@ void __flagship_reserve(
     }
 }
 
+FLAGSHIP_INLINE
 const char* __FLAGSHIP_TYPE_STRINGS[] = {
     "null",
     "bool",
@@ -859,7 +865,7 @@ const char* flagship_string_from_type(enum FlagshipType t) {
 }
 FLAGSHIP_INLINE
 enum FlagshipType flagship_type_from_string(const char* str, const char** endptr) {
-    for(enum FlagshipType t = 1; t < (FLAGSHIP_TYPE_LAST + 1); ++t) {
+    for(int t = 1; t < (int)(FLAGSHIP_TYPE_LAST + 1); ++t) {
         const char* tstr   = __FLAGSHIP_TYPE_STRINGS[t];
         const char* needle = strstr(str, tstr);
 
@@ -867,7 +873,7 @@ enum FlagshipType flagship_type_from_string(const char* str, const char** endptr
             if(endptr) {
                 *endptr = str + strlen(tstr);
             }
-            return t;
+            return (enum FlagshipType)t;
         }
     }
     return FLAGSHIP_TYPE_NULL;
